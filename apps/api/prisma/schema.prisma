@@ -66,10 +66,6 @@ model Order {
   averagePrice String?
   createdAt    DateTime
   updatedAt    DateTime
-  /// 相对下单时刻市价的滑点（基点，正数=对交易者不利）；MVP-3 滑点统计写入
-  slippageBps   String?
-  /// 滑点计算所用的参考价来源：CANDLE_1M | CANDLE_5M | NONE
-  slippageSource String?
   rawPayload   String
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -174,6 +170,11 @@ model Trade {
 
   /// 0-100
   executionScore Int?
+  /// MANUAL（人工填）| AUTO（规则自动）| NONE
+  scoreSource String @default("NONE")
+  /// 扣分明细 JSON：{ suggested, items:[{key,label,delta,reason}], version, notes:[] }
+  scoreDetail String?
+  scoredAt    DateTime?
   /// PENDING | DONE
   reviewStatus String @default("PENDING")
   /// AUTO_MATCHED | MANUAL_MATCHED | NEEDS_REVIEW

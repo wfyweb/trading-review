@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { MfeService } from './mfe.service';
+import { ScoreService } from './score.service';
 import { TradeQueryDto } from '../trades/trades.dto';
 
 @Controller('analytics')
@@ -8,6 +9,7 @@ export class AnalyticsController {
   constructor(
     private readonly analytics: AnalyticsService,
     private readonly mfe: MfeService,
+    private readonly score: ScoreService,
   ) {}
 
   @Get('overview')
@@ -66,5 +68,43 @@ export class AnalyticsController {
   @HttpCode(200)
   mfeOne(@Param('tradeId') tradeId: string, @Body() body: any) {
     return this.mfe.computeOne(tradeId, { allowFetch: body?.allowFetch !== false });
+  }
+
+  // ——— 执行评分自动化 ———
+  // 注意：静态路径必须写在 :tradeId 之前
+
+  @Get('score/summary')
+  scoreSummary() {
+    return this.score.summary();
+  }
+
+  @Get('score/weights')
+  scoreWeights() {
+    return this.score.getWeights();
+  }
+
+  @Put('score/weights')
+  saveScoreWeights(@Body() body: any) {
+    return this.score.saveWeights(body);
+  }
+
+  /** 批量：mode = suggest | fill | overwrite */
+  @Post('score/batch')
+  @HttpCode(200)
+  scoreBatch(@Body() body: any) {
+    return this.score.batch(body ?? {});
+  }
+
+  /** 单笔建议分（不写库） */
+  @Get('score/:tradeId')
+  scoreSuggest(@Param('tradeId') tradeId: string) {
+    return this.score.suggest(tradeId);
+  }
+
+  /** 采纳建议分 */
+  @Post('score/:tradeId/accept')
+  @HttpCode(200)
+  scoreAccept(@Param('tradeId') tradeId: string) {
+    return this.score.accept(tradeId);
   }
 }

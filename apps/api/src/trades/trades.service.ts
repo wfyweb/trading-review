@@ -254,6 +254,8 @@ export class TradesService {
       data: {
         reviewStatus: 'DONE',
         executionScore: score ?? null,
+        // 人工填分时标记来源，自动评分（AUTO）不会被静默覆盖
+        ...(executionScore !== undefined ? { scoreSource: 'MANUAL', scoredAt: new Date() } : {}),
         ...(tagIds ? { tags: { deleteMany: {}, create: tagIds.map((tagId) => ({ tagId })) } } : {}),
       },
     });

@@ -60,6 +60,9 @@ export interface Trade {
   marketRegime: string | null;
   setupType: string | null;
   executionScore: number | null;
+  scoreSource: 'MANUAL' | 'AUTO' | 'NONE';
+  scoreDetail: string | null;
+  scoredAt: string | null;
   reviewStatus: string;
   matchingStatus: string;
   feeUnconverted: boolean;
@@ -210,6 +213,55 @@ export interface RiskReport {
 
 export type Filters = Record<string, string | undefined>;
 
+export interface ScoreItem {
+  key: string;
+  label: string;
+  delta: number;
+  reason: string;
+}
+
+export interface ScoreResult {
+  tradeId: string;
+  symbol: string;
+  /** null = 没有可评分依据（未打标签且无客观信号），不编分 */
+  suggested: number | null;
+  selfScore: number | null;
+  scoreSource: 'MANUAL' | 'AUTO' | 'NONE';
+  /** 自评 − 建议；正数=自评偏高 */
+  deviation: number | null;
+  items: ScoreItem[];
+  notes: string[];
+  version: number;
+}
+
+export interface ScoreBatchResult {
+  mode: string;
+  dryRun: boolean;
+  total: number;
+  written: number;
+  emptyBefore: number;
+  noEvidence: number;
+  distribution: { label: string; count: number }[];
+  avgSuggested: number | null;
+  avgSelf: number | null;
+  deviationTop: { tradeId: string; symbol: string; selfScore: number; suggested: number; deviation: number }[];
+  sample: ScoreResult[];
+  weightsVersion: number;
+}
+
+export interface ScoreSummary {
+  closedTrades: number;
+  scoredCount: number;
+  unscoredCount: number;
+  coveragePct: string;
+  avgScore: number | null;
+  bySource: { source: string; count: number }[];
+  buckets: { label: string; min: number; max: number; count: number }[];
+  avgDeviation: number | null;
+  deviationTop: { tradeId: string; symbol: string; selfScore: number; suggested: number; deviation: number }[];
+  weightsVersion: number;
+}
+
 const BASE = '/api';
 
 function qs(filters: Filters = {}): string {
@@ -327,6 +379,21 @@ export const api = {
       `/analytics/mfe/${tradeId}`,
       { method: 'POST', body: JSON.stringify({ allowFetch }) },
     ),
+
+  // ——— 执行评分自动化 ———
+  scoreSuggest: (tradeId: string) => req<ScoreResult>(`/analytics/score/${tradeId}`),
+
+  scoreAccept: (tradeId: string) => req<ScoreResult>(`/analytics/score/${tradeId}/accept`, { method: 'POST' }),
+
+  scoreBatch: (body: { ids?: string[]; filter?: Filters; mode?: 'suggest' | 'fill' | 'overwrite'; dryRun?: boolean } = {}) =>
+    req<ScoreBatchResult>('/analytics/score/batch', { method: 'POST', body: JSON.stringify(body) }),
+
+  scoreSummary: () => req<ScoreSummary>('/analytics/score/summary'),
+
+  scoreWeights: () => req<Record<string, any>>('/analytics/score/weights'),
+
+  saveScoreWeights: (body: Record<string, any>) =>
+    req<Record<string, any>>('/analytics/score/weights', { method: 'PUT', body: JSON.stringify(body) }),
 
   createTrade: (body: Record<string, unknown>) => req<Trade>('/trades', { method: 'POST', body: JSON.stringify(body) }),
 

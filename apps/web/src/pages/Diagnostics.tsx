@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, type DiagnosticIssue, type Filters, type RiskReport } from '../lib/api';
+import { api, type DiagnosticIssue, type Filters, type RiskReport, type ScoreBatchResult, type ScoreSummary } from '../lib/api';
 import { num, signed, pnlClass, ratioToPct } from '../lib/format';
 import { DailyBars } from '../charts';
+import { go } from '../lib/router';
 import { ErrorCard, Loading } from './Overview';
 
 interface Diag {
@@ -28,6 +29,11 @@ export function DiagnosticsPage({ filters }: { filters: Filters }) {
   const [diag, setDiag] = useState<Diag | null>(null);
   const [risk, setRisk] = useState<RiskReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [scoreSummary, setScoreSummary] = useState<ScoreSummary | null>(null);
+  const [preview, setPreview] = useState<ScoreBatchResult | null>(null);
+  const [busy, setBusy] = useState<'' | 'suggest' | 'fill'>('');
+
+  const loadScore = () => api.scoreSummary().then(setScoreSummary).catch(() => {});
 
   useEffect(() => {
     Promise.all([api.diagnostics(filters), api.risk(filters)])
@@ -36,7 +42,27 @@ export function DiagnosticsPage({ filters }: { filters: Filters }) {
         setRisk(r);
       })
       .catch((e) => setErr(e.message));
+    loadScore();
   }, [JSON.stringify(filters)]);
+
+  /** 批量：dryRun 只预览；fill 只补空白分，不碰人工分 */
+  const runBatch = async (mode: 'suggest' | 'fill', dryRun: boolean) => {
+    setBusy(mode);
+    try {
+      const r = await api.scoreBatch({ mode, dryRun, filter: filters });
+      if (dryRun) {
+        setPreview(r);
+      } else {
+        setPreview(null);
+        await loadScore();
+        alert(`已写入 ${r.written} 笔自动分${r.noEvidence > 0 ? `，${r.noEvidence} 笔因无依据跳过` : ''}`);
+      }
+    } catch (e: any) {
+      alert(`批量评分失败：${e.message}`);
+    } finally {
+      setBusy('');
+    }
+  };
 
   if (err) return <ErrorCard message={err} />;
   if (!diag || !risk) return <Loading />;
@@ -76,6 +102,99 @@ export function DiagnosticsPage({ filters }: { filters: Filters }) {
               <span className="vline" />
               <span>{diag.insufficient.note}</span>
             </div>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-hd">
+          <h2>执行评分自动化</h2>
+          <span className="hint">按违规标签 + 客观指标给建议分；没有依据的交易不给分，绝不与盈亏挂钩</span>
+          <div className="spacer" />
+          <button className="btn ghost" disabled={Boolean(busy)} onClick={() => runBatch('suggest', true)}>
+            {busy === 'suggest' ? '计算中…' : '预览建议分'}
+          </button>
+          <button className="btn primary" disabled={Boolean(busy)} onClick={() => runBatch('fill', false)}>
+            {busy === 'fill' ? '写入中…' : `填充空白（${scoreSummary?.unscoredCount ?? 0} 笔）`}
+          </button>
+        </div>
+        <div className="card-bd">
+          {!scoreSummary ? (
+            <div className="muted" style={{ fontSize: 11 }}>加载中…</div>
+          ) : (
+            <>
+              <div className="grid g4" style={{ gap: 10 }}>
+                <MiniStat label="已评分" value={`${scoreSummary.scoredCount}/${scoreSummary.closedTrades}`} sub={`覆盖 ${scoreSummary.coveragePct}%`} />
+                <MiniStat label="平均分" value={scoreSummary.avgScore === null ? '—' : String(scoreSummary.avgScore)} sub="仅统计已评分" />
+                <MiniStat
+                  label="平均偏差"
+                  value={scoreSummary.avgDeviation === null ? '—' : scoreSummary.avgDeviation > 0 ? `+${scoreSummary.avgDeviation}` : String(scoreSummary.avgDeviation)}
+                  sub="自评 − 建议"
+                />
+                <MiniStat label="自动分" value={String(scoreSummary.bySource.find((s) => s.source === 'AUTO')?.count ?? 0)} sub="规则写入" />
+              </div>
+
+              <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'flex-end', height: 54 }}>
+                {scoreSummary.buckets.map((b) => {
+                  const max = Math.max(...scoreSummary.buckets.map((x) => x.count), 1);
+                  return (
+                    <div key={b.label} style={{ flex: 1, textAlign: 'center' }}>
+                      <div
+                        style={{
+                          height: Math.max(2, (b.count / max) * 40),
+                          background: b.min >= 75 ? '#12b76a' : b.min >= 60 ? '#e8a33d' : '#e5484d',
+                          opacity: 0.55,
+                          borderRadius: 2,
+                        }}
+                      />
+                      <div className="muted" style={{ fontSize: 9.5, marginTop: 3 }}>{b.label}</div>
+                      <div className="mono" style={{ fontSize: 10 }}>{b.count}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {preview && (
+                <div className="banner" style={{ marginTop: 10, display: 'block' }}>
+                  <strong>
+                    预览：{preview.total - preview.noEvidence} 笔可评分
+                    {preview.noEvidence > 0 ? `，${preview.noEvidence} 笔无依据跳过` : ''}
+                    {preview.avgSuggested !== null ? ` · 平均建议分 ${preview.avgSuggested}` : ''}
+                  </strong>
+                  <div style={{ fontSize: 11, marginTop: 4, lineHeight: 1.7 }}>
+                    分布 {preview.distribution.map((d) => `${d.label}:${d.count}`).join(' · ')}
+                    {preview.deviationTop.length > 0 && (
+                      <>
+                        <br />
+                        自评偏差最大：
+                        {preview.deviationTop.slice(0, 3).map((d) => `${d.symbol} 自评${d.selfScore}/建议${d.suggested}(${d.deviation > 0 ? '+' : ''}${d.deviation})`).join('，')}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {scoreSummary.deviationTop.length > 0 && !preview && (
+                <div style={{ marginTop: 10 }}>
+                  <div className="muted" style={{ fontSize: 10.5, marginBottom: 4 }}>自评与建议偏差最大（自我认知与执行事实的差距）</div>
+                  {scoreSummary.deviationTop.slice(0, 3).map((d) => (
+                    <div
+                      key={d.tradeId}
+                      className="stat-row"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => go(`trades/${d.tradeId}`)}
+                      title="点击查看这笔交易"
+                    >
+                      <span style={{ fontSize: 11.5 }}>{d.symbol}</span>
+                      <span className="mono" style={{ fontSize: 11.5 }}>
+                        自评 {d.selfScore} / 建议 {d.suggested} · {d.deviation > 0 ? '+' : ''}
+                        {d.deviation}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -213,4 +332,14 @@ function ruleText(code: string): string {
     R10: '手续费 / |毛收益| > 50% → 毛利被成本吃掉一半以上',
   };
   return map[code] ?? '';
+}
+
+function MiniStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="metric" style={{ padding: 10 }}>
+      <div className="metric-label">{label}</div>
+      <div className="metric-value" style={{ fontSize: 18 }}>{value}</div>
+      {sub && <div className="metric-sub">{sub}</div>}
+    </div>
+  );
 }

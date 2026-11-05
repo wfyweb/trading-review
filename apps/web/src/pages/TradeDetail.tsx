@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type Tag, type Trade } from '../lib/api';
+import { api, type Tag, type Trade, type ScoreResult } from '../lib/api';
 import { num, signed, pnlClass, dtFull, duration, REGIME_LABEL, EMOTIONS, priceDp, qtyDp } from '../lib/format';
 import { go } from '../lib/router';
 import { C } from '../lib/colors';
@@ -31,6 +31,14 @@ export function TradeDetailPage({ id }: { id: string }) {
   const [candleMeta, setCandleMeta] = useState<{ granularity: string; coverage: number; fromCache: boolean; warning: string | null } | null>(null);
   const [loadingCandles, setLoadingCandles] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [score, setScore] = useState<ScoreResult | null>(null);
+  const [accepting, setAccepting] = useState(false);
+
+  const refreshScore = () => api.scoreSuggest(id).then(setScore).catch(() => {});
+  useEffect(() => {
+    refreshScore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   useEffect(() => {
     Promise.all([api.trade(id), api.tags()])
@@ -70,8 +78,7 @@ export function TradeDetailPage({ id }: { id: string }) {
   }, [id]);
 
   /** 单笔重算 MFE/MAE，算完刷新本页数据 */
-  const recalcMfe = async () => {
-    setCalculating(true);
+  const recalcMfe = async () => {    setCalculating(true);
     try {
       const r = await api.mfeOne(id, true);
       const t = await api.trade(id);
@@ -84,6 +91,22 @@ export function TradeDetailPage({ id }: { id: string }) {
     }
   };
 
+  /** 采纳建议分（写入人工分，保留明细） */
+  const acceptScore = async () => {
+    setAccepting(true);
+    try {
+      await api.scoreAccept(id);
+      const t = await api.trade(id);
+      setTrade(t);
+      setForm((f) => ({ ...f, executionScore: t.executionScore ? String(t.executionScore) : f.executionScore }));
+      await refreshScore();
+    } catch (e: any) {
+      alert(`采纳失败：${e.message}`);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -92,6 +115,7 @@ export function TradeDetailPage({ id }: { id: string }) {
       setTimeout(() => setSaved(false), 2400);
       const t = await api.trade(id);
       setTrade(t);
+      refreshScore();
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -312,6 +336,87 @@ export function TradeDetailPage({ id }: { id: string }) {
 
           <div className="card">
             <div className="card-hd">
+              <h2>执行评分</h2>
+              <span className="hint">
+                {trade.scoreSource === 'AUTO' ? '规则自动分' : trade.scoreSource === 'MANUAL' ? '人工分' : '未评分'}
+              </span>
+            </div>
+            <div className="card-bd" style={{ paddingTop: 6 }}>
+              {!score ? (
+                <div className="muted" style={{ fontSize: 11 }}>计算中…</div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 18, alignItems: 'flex-end', marginBottom: 8 }}>
+                    <div>
+                      <div className="muted" style={{ fontSize: 10 }}>
+                        {score.scoreSource === 'MANUAL' ? '自评' : score.scoreSource === 'AUTO' ? '当前(自动)' : '自评'}
+                      </div>
+                      <div className="mono" style={{ fontSize: 19, color: C.t2 }}>{score.selfScore ?? '—'}</div>
+                    </div>
+                    <div>
+                      <div className="muted" style={{ fontSize: 10 }}>建议</div>
+                      <div className="mono" style={{ fontSize: 19, color: scoreColor(score.suggested) }}>{score.suggested ?? '—'}</div>
+                    </div>
+                    <div>
+                      <div className="muted" style={{ fontSize: 10 }}>偏差</div>
+                      <div
+                        className="mono"
+                        style={{ fontSize: 19, color: score.deviation === null ? C.t3 : score.deviation > 0 ? 'var(--warn)' : C.accent }}
+                      >
+                        {score.deviation === null ? '—' : score.deviation > 0 ? `+${score.deviation}` : score.deviation}
+                      </div>
+                    </div>
+                  </div>
+
+                  {score.items.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
+                      {score.items.map((it) => (
+                        <div key={it.key} className="stat-row" title={it.reason}>
+                          <span style={{ fontSize: 11.5, color: C.t2 }}>{it.label}</span>
+                          <span className="mono" style={{ fontSize: 11.5, color: it.delta < 0 ? 'var(--warn)' : C.accent }}>
+                            {it.delta > 0 ? `+${it.delta}` : it.delta}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {score.notes.map((n, i) => (
+                    <div key={i} className="muted" style={{ fontSize: 10.5, lineHeight: 1.55 }}>
+                      · {n}
+                    </div>
+                  ))}
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <button
+                      className="btn ghost"
+                      style={{ fontSize: 11, padding: '3px 10px' }}
+                      disabled={accepting || score.suggested === null}
+                      onClick={acceptScore}
+                    >
+                      {accepting ? '写入中…' : '采纳建议分'}
+                    </button>
+                    <span className="muted" style={{ fontSize: 10 }}>
+                      {score.deviation !== null && Math.abs(score.deviation) >= 20
+                        ? score.deviation > 0
+                          ? '自评明显偏高，值得回看'
+                          : '自评明显偏低，对自己太苛刻'
+                        : ''}
+                    </span>
+                  </div>
+
+                  {score.suggested === null && (
+                    <div className="muted" style={{ fontSize: 10.5, marginTop: 6 }}>
+                      没有可评分依据时系统不给分——宁可不给结论，也不编一个数字。
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-hd">
               <h2>风险口径</h2>
               <span className="hint">{trade.candleStatus === 'OK' ? 'K 线已算' : trade.candleStatus === 'PARTIAL' ? 'K 线不完整' : trade.candleStatus === 'NO_DATA' ? '无 K 线' : '未算 K 线'}</span>
             </div>
@@ -478,11 +583,16 @@ function Row({ label, value, cls, strong }: { label: string; value: string; cls?
   );
 }
 
+/**
+ * 执行分色阶：固定交通灯语义（高分绿、中分橙、低分红）。
+ * 刻意不复用 --pos/--neg——那两个随「涨跌配色」切换而反转，
+ * 分数不是盈亏，不能跟着翻。
+ */
 function scoreColor(score: number | null): string {
   if (score === null) return C.t2;
-  if (score >= 75) return C.neg;
-  if (score >= 50) return 'var(--warn)';
-  return C.pos;
+  if (score >= 75) return '#12b76a';
+  if (score >= 50) return '#e8a33d';
+  return '#e5484d';
 }
 
 /** MFE/MAE 在库里是 JSON 字符串，解析失败就当未计算（不用 0 顶替） */
