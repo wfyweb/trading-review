@@ -1,0 +1,362 @@
+// 短线合约交易复盘系统 · 数据模型
+// 口径来源：docs/01-数据模型与计算口径.md
+//
+// 重要约定：
+// 1. 所有价格 / 数量 / 金额 / 比率字段一律使用 String 存十进制文本，
+//    运算统一在服务层用 decimal.js，禁止 number 参与金额计算。
+// 2. SQLite 无原生枚举，状态类字段用 String + src/common/constants.ts 中的常量约束。
+// 3. 原始层（Order / Fill / Ledger）必须完整留存 rawPayload，派生层（Trade）可随时重算。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// 交易账户
+model Account {
+  id       String  @id @default(cuid())
+  name     String
+  exchange String  @default("BITGET")
+  apiKey   String?
+  /// 不存明文：仅保存系统钥匙串 / 环境变量的引用键
+  secretRef     String?
+  passphraseRef String?
+  /// one_way_mode | hedge_mode，同步时探测写入
+  posMode         String?
+  /// CLASSIC（经典账户 v2）| UTA（统一账户 v3），首次连接时探测写入
+  accountMode     String?
+  /// 初始资金（USDT），10U 起步
+  baselineCapital String @default("10")
+  quoteCurrency   String @default("USDT")
+  /// 最近一次成功同步时间
+  lastSyncAt      DateTime?
+  /// 交易所返回的账户权益（最近一次），用于反推初始资金
+  lastEquity      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orders     Order[]
+  fills      Fill[]
+  trades     Trade[]
+  ledgers    Ledger[]
+  syncJobs   SyncJob[]
+  snapshots  EquitySnapshot[]
+  strategies Strategy[]
+  tags       Tag[]
+}
+
+/// 订单（原始层，交易所视角）
+model Order {
+  id              String   @id @default(cuid())
+  accountId       String
+  exchangeOrderId String
+  symbol          String
+  productType     String   @default("USDT-FUTURES")
+  side            String
+  /// BOTH | LONG | SHORT（第一版恒为 BOTH，为 hedge mode 预留）
+  positionSide String?
+  orderType    String
+  status       String
+  quantity     String
+  filledQty    String   @default("0")
+  averagePrice String?
+  createdAt    DateTime
+  updatedAt    DateTime
+  rawPayload   String
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, exchangeOrderId])
+  @@index([accountId, symbol, createdAt])
+}
+
+/// 成交（原始层，配对算法的唯一输入）
+model Fill {
+  id             String  @id @default(cuid())
+  accountId      String
+  orderId        String?
+  exchangeFillId String
+  symbol         String
+  /// BUY | SELL
+  side String
+  /// BOTH | LONG | SHORT
+  positionSide String?
+  price        String
+  quantity     String
+  /// 手续费（仅 USDT 计价时写入实际值，否则为 "0"）
+  fee       String  @default("0")
+  feeCoin   String?
+  /// 交易所返回的已实现盈亏（不含手续费）
+  execPnl   String?
+  filledAt  DateTime
+  rawPayload String
+
+  account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tradeFill TradeFill[]
+
+  @@unique([accountId, exchangeFillId])
+  @@index([accountId, symbol, filledAt])
+}
+
+/// 复合交易（派生层，复盘的操作对象）
+model Trade {
+  id        String @id @default(cuid())
+  accountId String
+  symbol    String
+  /// LONG | SHORT
+  direction String
+  /// OPEN | CLOSED | NEEDS_REVIEW
+  status String
+
+  entryTime      DateTime
+  exitTime       DateTime?
+  holdingSeconds Int?
+
+  /// 加权平均开仓价
+  entryPrice String
+  /// 加权平均平仓价
+  exitPrice  String?
+  /// 开仓数量
+  quantity   String
+
+  /// 保证金（USDT）
+  margin          String?
+  plannedLeverage String?
+  /// 名义仓位 / 保证金
+  actualLeverage  String?
+
+  /// 首次开仓时的止损价（R 倍数主口径的来源）
+  initialStopPrice String?
+  finalStopPrice   String?
+  takeProfitPrice  String?
+  /// 计划风险金额 = |entryPrice - initialStopPrice| × quantity
+  riskAmount       String?
+
+  grossPnl        String  @default("0")
+  tradingFee      String  @default("0")
+  fundingFee      String  @default("0")
+  netPnl          String  @default("0")
+  /// 成分缺失时为 true，UI 必须显示「估算值」
+  netPnlEstimated Boolean @default(false)
+  /// 逗号分隔的缺失成分，如 "funding_fee,trading_fee"
+  missingComponents String?
+  /// execPnl 与价格差计算不一致时置 true
+  pnlMismatch Boolean @default(false)
+
+  /// 净收益 / 计划风险
+  rMultiple       String?
+  /// PLANNED_STOP | NONE
+  rMultipleSource String?
+
+  /// 本期恒为 null（不做 K 线）
+  mfe String?
+  mae String?
+
+  strategyId   String?
+  /// TREND_UP | TREND_DOWN | RANGE | HIGH_VOL | NEWS
+  marketRegime String?
+  /// 形态类型自由文本
+  setupType    String?
+
+  /// 0-100
+  executionScore Int?
+  /// PENDING | DONE
+  reviewStatus String @default("PENDING")
+  /// AUTO_MATCHED | MANUAL_MATCHED | NEEDS_REVIEW
+  matchingStatus String @default("AUTO_MATCHED")
+  /// 含非 USDT 计价手续费，未折算
+  feeUnconverted Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account  Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  strategy Strategy?    @relation(fields: [strategyId], references: [id])
+  review   TradeReview?
+  tags     TradeTag[]
+  fills    TradeFill[]
+  ledgers  Ledger[]
+
+  @@index([accountId, entryTime])
+  @@index([accountId, symbol])
+  @@index([accountId, strategyId])
+}
+
+/// 交易 ↔ 成交 关联（支持反手时一笔成交拆分到两个交易）
+model TradeFill {
+  id       String @id @default(cuid())
+  tradeId  String
+  fillId   String
+  /// ENTRY | EXIT | ADJUST
+  role     String
+  quantity String
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  fill  Fill  @relation(fields: [fillId], references: [id], onDelete: Cascade)
+
+  @@unique([tradeId, fillId, role])
+  @@index([fillId])
+}
+
+/// 单笔复盘的定性记录（人工层）
+model TradeReview {
+  id      String @id @default(cuid())
+  tradeId String @unique
+
+  entryReason    String?
+  exitReason     String?
+  marketContext  String?
+  /// 计划中的形态
+  plannedSetup   String?
+  /// 实际做了什么
+  actualProcess  String?
+  /// 计划与实际的偏差
+  planDeviation  String?
+  /// 恐惧 / 贪婪 / 急躁 / 平静
+  emotion        String?
+  followedPlan   Boolean?
+  reviewConclusion  String?
+  improvementAction String?
+  /// 本地截图路径，逗号分隔
+  screenshotPaths String?
+
+  reviewedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+}
+
+/// 交易策略
+model Strategy {
+  id          String  @id @default(cuid())
+  accountId   String
+  name        String
+  description String?
+  /// 入场规则文本描述
+  rules       String?
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  trades  Trade[]
+
+  @@unique([accountId, name])
+}
+
+/// 标签（失误 / 做对了 / 行情环境 / 形态）
+model Tag {
+  id        String @id @default(cuid())
+  accountId String
+  name      String
+  /// MISTAKE | POSITIVE | MARKET | SETUP
+  category String
+  /// POSITIVE | NEGATIVE | NEUTRAL
+  polarity String @default("NEGATIVE")
+  color    String?
+
+  account Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  trades  TradeTag[]
+
+  @@unique([accountId, name])
+}
+
+model TradeTag {
+  id      String @id @default(cuid())
+  tradeId String
+  tagId   String
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tradeId, tagId])
+  @@index([tagId])
+}
+
+/// 资金流水（净收益中资金费率的唯一来源）
+model Ledger {
+  id        String @id @default(cuid())
+  accountId String
+  tradeId   String?
+  /// TRADE_FEE | FUNDING | TRANSFER_IN | TRANSFER_OUT | REALIZED_PNL | OTHER
+  type String
+  /// 带符号：对交易者现金流，收入为正、支出为负
+  amount String
+  coin   String @default("USDT")
+  /// 资金费率归属需要按交易对匹配持仓区间
+  symbol String?
+  bizId  String?
+  occurredAt DateTime
+  rawPayload String?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  trade   Trade?  @relation(fields: [tradeId], references: [id])
+
+  @@unique([accountId, bizId])
+  @@index([accountId, occurredAt])
+}
+
+/// 权益快照（每日，用于曲线与对账）
+model EquitySnapshot {
+  id        String   @id @default(cuid())
+  accountId String
+  /// YYYY-MM-DD
+  date           String
+  /// baselineCapital + ΣnetPnl（剔除划转）
+  tradingEquity  String
+  /// tradingEquity + Σ净划转
+  accountEquity  String
+  peakEquity     String
+  drawdownPct    String
+  note           String?
+  createdAt      DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, date])
+}
+
+/// 同步任务
+model SyncJob {
+  id        String @id @default(cuid())
+  accountId String
+  /// PENDING | RUNNING | SUCCESS | FAILED | ABORTED
+  status        String
+  requestedFrom DateTime
+  requestedTo   DateTime
+
+  ordersCount   Int @default(0)
+  fillsCount    Int @default(0)
+  ledgerCount   Int @default(0)
+  insertedCount Int @default(0)
+  updatedCount  Int @default(0)
+  errorCount    Int @default(0)
+
+  /// 同步前探测到的持仓模式
+  posModeDetected String?
+  /// LIVE | MOCK
+  mode            String  @default("MOCK")
+  /// 逐条执行日志（JSONL），用于排查"这笔数据为什么没进来"
+  logs            String?
+  abortReason     String?
+  errorMessage    String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+}
+
+/// 键值配置（口径开关、UI 偏好）
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

@@ -1,0 +1,21 @@
+{
+  "name": "trading-review",
+  "version": "0.1.0",
+  "private": true,
+  "description": "短线合约交易复盘工作台（本地优先，Bitget）",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:api": "pnpm --filter api dev",
+    "dev:web": "pnpm --filter web dev",
+    "build": "pnpm -r build",
+    "db:generate": "pnpm --filter api prisma:generate",
+    "db:push": "pnpm --filter api prisma:push",
+    "db:seed": "pnpm --filter api prisma:seed",
+    "db:studio": "pnpm --filter api prisma:studio",
+    "db:reset": "pnpm --filter api prisma:reset"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  }
+}

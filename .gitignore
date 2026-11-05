@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+apps/api/.env
+data/*.db
+data/*.db-journal
+data/raw/*
+data/exports/*
+!data/raw/.gitkeep
+!data/exports/.gitkeep

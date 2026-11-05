@@ -1,0 +1,53 @@
+export const DIRECTION = { LONG: 'LONG', SHORT: 'SHORT' } as const;
+export const TRADE_STATUS = { OPEN: 'OPEN', CLOSED: 'CLOSED', NEEDS_REVIEW: 'NEEDS_REVIEW' } as const;
+export const MATCHING_STATUS = {
+  AUTO_MATCHED: 'AUTO_MATCHED',
+  MANUAL_MATCHED: 'MANUAL_MATCHED',
+  NEEDS_REVIEW: 'NEEDS_REVIEW',
+} as const;
+
+export const REVIEW_STATUS = { PENDING: 'PENDING', DONE: 'DONE' } as const;
+
+export const TAG_CATEGORY = {
+  MISTAKE: 'MISTAKE',
+  POSITIVE: 'POSITIVE',
+  MARKET: 'MARKET',
+  SETUP: 'SETUP',
+} as const;
+
+export const TAG_POLARITY = {
+  POSITIVE: 'POSITIVE',
+  NEGATIVE: 'NEGATIVE',
+  NEUTRAL: 'NEUTRAL',
+} as const;
+
+export const LEDGER_TYPE = {
+  TRADE_FEE: 'TRADE_FEE',
+  FUNDING: 'FUNDING',
+  TRANSFER_IN: 'TRANSFER_IN',
+  TRANSFER_OUT: 'TRANSFER_OUT',
+  REALIZED_PNL: 'REALIZED_PNL',
+  OTHER: 'OTHER',
+} as const;
+
+export const MARKET_REGIME = {
+  TREND_UP: 'TREND_UP',
+  TREND_DOWN: 'TREND_DOWN',
+  RANGE: 'RANGE',
+  HIGH_VOL: 'HIGH_VOL',
+  NEWS: 'NEWS',
+} as const;
+
+export const POS_MODE = { ONE_WAY: 'one_way_mode', HEDGE: 'hedge_mode' } as const;
+
+/** 诊断规则阈值，全部集中在此，便于审计 */
+export const DIAGNOSTIC_THRESHOLDS = {
+  MIN_SAMPLE_FOR_STRATEGY: 20,
+  OVERTRADE_MULTIPLIER: 2,
+  OVERTRADE_LOOKBACK_DAYS: 30,
+  LOSS_STREAK: 3,
+  POSITION_SCALE_AFTER_STREAK: 1.5,
+  MISSING_STOP_RATIO: 0.3,
+  FEE_EROSION_RATIO: 0.4,
+  PLAN_DEVIATION_RATIO: 0.2,
+};

@@ -1,0 +1,401 @@
+import { useEffect, useMemo, useState } from 'react';
+import { api, type Tag, type Trade } from '../lib/api';
+import { num, signed, pnlClass, dtFull, duration, REGIME_LABEL, EMOTIONS, priceDp, qtyDp } from '../lib/format';
+import { go } from '../lib/router';
+import { C } from '../lib/colors';
+import { ErrorCard, Loading } from './Overview';
+
+export function TradeDetailPage({ id }: { id: string }) {
+  const [trade, setTrade] = useState<Trade | null>(null);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [form, setForm] = useState({
+    entryReason: '',
+    exitReason: '',
+    plannedSetup: '',
+    actualProcess: '',
+    planDeviation: '',
+    emotion: '',
+    followedPlan: null as boolean | null,
+    reviewConclusion: '',
+    improvementAction: '',
+    executionScore: '',
+  });
+  const [tagIds, setTagIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    Promise.all([api.trade(id), api.tags()])
+      .then(([t, tags]) => {
+        setTrade(t);
+        setAllTags(tags);
+        setTagIds(t.tags.map((x) => x.id));
+        setForm({
+          entryReason: t.review?.entryReason ?? '',
+          exitReason: t.review?.exitReason ?? '',
+          plannedSetup: t.review?.plannedSetup ?? '',
+          actualProcess: t.review?.actualProcess ?? '',
+          planDeviation: t.review?.planDeviation ?? '',
+          emotion: t.review?.emotion ?? '',
+          followedPlan: t.review?.followedPlan ?? null,
+          reviewConclusion: t.review?.reviewConclusion ?? '',
+          improvementAction: t.review?.improvementAction ?? '',
+          executionScore: t.executionScore ? String(t.executionScore) : '',
+        });
+      })
+      .catch((e) => setErr(e.message));
+  }, [id]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.saveReview(id, { ...form, tagIds });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2400);
+      const t = await api.trade(id);
+      setTrade(t);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (err) return <ErrorCard message={err} />;
+  if (!trade) return <Loading />;
+
+  const missingStop = !trade.initialStopPrice;
+
+  return (
+    <div className="page">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button className="btn ghost" onClick={() => go('trades')}>
+          ← 返回列表
+        </button>
+        <span className="muted" style={{ fontSize: 11 }}>交易 ID {trade.id.slice(0, 10)}</span>
+        <div className="spacer" />
+        {trade.netPnlEstimated && <span className="chip warn">净收益为估算值</span>}
+        {trade.feeUnconverted && <span className="chip warn">含非 USDT 手续费，未折算</span>}
+        {trade.pnlMismatch && <span className="chip danger">毛收益校验不一致</span>}
+        <button className="btn primary" onClick={save} disabled={saving}>
+          {saving ? '保存中…' : saved ? '已保存 ✓' : '保存复盘'}
+        </button>
+        <button
+          className="btn"
+          style={{ borderColor: 'rgba(254,84,91,.4)', color: '#ffc4c7' }}
+          onClick={async () => {
+            if (!confirm('删除这笔交易？复盘记录与标签会一起删除，不可恢复。')) return;
+            try {
+              await api.deleteTrade(id);
+              go('trades');
+            } catch (e: any) {
+              alert(`删除失败：${e.message}`);
+            }
+          }}
+        >
+          删除
+        </button>
+      </div>
+
+      {missingStop && (
+        <div className="banner">
+          <strong>缺少开仓止损价</strong>
+          <span className="vline" />
+          <span>补齐 <code className="mono">initialStopPrice</code> 即可计算 R 倍数，当前该笔不参与 R 相关统计。</span>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-bd" style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18, fontWeight: 600 }}>{trade.symbol}</span>
+              <span className={`chip ${trade.direction === 'LONG' ? 'long' : 'short'}`}>
+                {trade.direction === 'LONG' ? '做多' : '做空'}
+              </span>
+              <span className="chip">{trade.strategy?.name ?? '未归类'}</span>
+              {trade.marketRegime && <span className="chip">{REGIME_LABEL[trade.marketRegime] ?? trade.marketRegime}</span>}
+            </div>
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+              {dtFull(trade.entryTime)} → {dtFull(trade.exitTime)} · 持仓 {duration(trade.holdingSeconds)} · {trade.setupType ?? '未记录形态'}
+            </div>
+          </div>
+          <div className="spacer" />
+          <div style={{ textAlign: 'right' }}>
+            <div className="muted" style={{ fontSize: 10 }}>净收益 (USDT)</div>
+            <div className={`mono ${pnlClass(trade.netPnl)}`} style={{ fontSize: 28, fontWeight: 500, letterSpacing: '-0.5px' }}>
+              {signed(trade.netPnl, 3)}
+            </div>
+          </div>
+          <div style={{ width: 1, height: 40, background: C.border }} />
+          <div style={{ textAlign: 'right' }}>
+            <div className="muted" style={{ fontSize: 10 }}>R 倍数</div>
+            <div className="mono" style={{ fontSize: 22, fontWeight: 500 }}>
+              {trade.rMultiple ? num(trade.rMultiple, 2) : <span className="muted" style={{ fontSize: 14 }}>不可计算</span>}
+            </div>
+          </div>
+          <div style={{ width: 1, height: 40, background: C.border }} />
+          <div style={{ textAlign: 'right' }}>
+            <div className="muted" style={{ fontSize: 10 }}>执行评分</div>
+            <div className="mono" style={{ fontSize: 22, fontWeight: 500, color: scoreColor(trade.executionScore) }}>
+              {trade.executionScore ?? '—'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid g-8-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="card">
+            <div className="card-hd">
+              <h2>价格轨迹</h2>
+              <span className="hint">仅用成交价还原，非 K 线（本期不做行情重建）</span>
+            </div>
+            <div className="card-bd">
+              <PriceTrack trade={trade} />
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-hd">
+              <h2>复盘记录</h2>
+              <span className="hint">主观信息只能人工填写，系统不猜</span>
+            </div>
+            <div className="card-bd" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Field label="入场理由（当时看到了什么信号）">
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={form.entryReason}
+                  onChange={(e) => setForm({ ...form, entryReason: e.target.value })}
+                  placeholder="例：4H 箱体上沿放量突破，回踩不破 62000 建仓"
+                />
+              </Field>
+              <div className="grid g2">
+                <Field label="计划形态">
+                  <input className="input" value={form.plannedSetup} onChange={(e) => setForm({ ...form, plannedSetup: e.target.value })} placeholder="突破回踩 / 均线回踩…" />
+                </Field>
+                <Field label="实际执行">
+                  <input className="input" value={form.actualProcess} onChange={(e) => setForm({ ...form, actualProcess: e.target.value })} placeholder="与计划一致 / 提前入场…" />
+                </Field>
+              </div>
+              <Field label="出场理由">
+                <textarea className="input" rows={2} value={form.exitReason} onChange={(e) => setForm({ ...form, exitReason: e.target.value })} />
+              </Field>
+              <Field label="计划偏离（哪里没按计划做）">
+                <input className="input" value={form.planDeviation} onChange={(e) => setForm({ ...form, planDeviation: e.target.value })} placeholder="提前止盈 / 移动止损 / 加仓…" />
+              </Field>
+              <div className="grid g3">
+                <Field label="当时的情绪">
+                  <select className="select" value={form.emotion} onChange={(e) => setForm({ ...form, emotion: e.target.value })}>
+                    <option value="">未记录</option>
+                    {EMOTIONS.map((e) => (
+                      <option key={e} value={e}>
+                        {e}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="是否按计划执行">
+                  <select
+                    className="select"
+                    value={form.followedPlan === null ? '' : String(form.followedPlan)}
+                    onChange={(e) => setForm({ ...form, followedPlan: e.target.value === '' ? null : e.target.value === 'true' })}
+                  >
+                    <option value="">未记录</option>
+                    <option value="true">是</option>
+                    <option value="false">否</option>
+                  </select>
+                </Field>
+                <Field label="执行评分（0-100）">
+                  <input className="input" value={form.executionScore} onChange={(e) => setForm({ ...form, executionScore: e.target.value })} placeholder="80" />
+                </Field>
+              </div>
+              <Field label="复盘结论">
+                <textarea className="input" rows={2} value={form.reviewConclusion} onChange={(e) => setForm({ ...form, reviewConclusion: e.target.value })} placeholder="这笔交易做对了什么、做错了什么" />
+              </Field>
+              <Field label="下一步要改的一件事">
+                <input className="input" value={form.improvementAction} onChange={(e) => setForm({ ...form, improvementAction: e.target.value })} placeholder="必须具体、可执行" />
+              </Field>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="card">
+            <div className="card-hd">
+              <h2>盈亏构成</h2>
+            </div>
+            <div className="card-bd" style={{ paddingTop: 6 }}>
+              <Row label="毛收益" value={signed(trade.grossPnl, 4)} cls={pnlClass(trade.grossPnl)} />
+              <Row label="− 手续费" value={signed(`-${trade.tradingFee}`, 4)} cls="neg" />
+              <Row label="+ 资金费率" value={signed(trade.fundingFee, 4)} cls={pnlClass(trade.fundingFee)} />
+              <Row label="= 净收益" value={signed(trade.netPnl, 4)} cls={pnlClass(trade.netPnl)} strong />
+              <div style={{ height: 8 }} />
+              <Row label="入场均价" value={num(trade.entryPrice, priceDp(trade.entryPrice))} />
+              <Row label="出场均价" value={trade.exitPrice ? num(trade.exitPrice, 4) : '持仓中'} />
+              <Row label="数量" value={num(trade.quantity, qtyDp(trade.quantity))} />
+              <Row label="名义仓位" value={`${num(Number(trade.entryPrice) * Number(trade.quantity), 2)} U`} />
+              <Row label="保证金" value={trade.margin ? `${num(trade.margin, 2)} U` : '—'} />
+              <Row label="实际杠杆" value={trade.actualLeverage ? `${num(trade.actualLeverage, 1)}×` : '—'} />
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-hd">
+              <h2>风险口径</h2>
+            </div>
+            <div className="card-bd" style={{ paddingTop: 6 }}>
+              <Row label="开仓止损价" value={trade.initialStopPrice ? num(trade.initialStopPrice, priceDp(trade.initialStopPrice)) : '未记录'} cls={missingStop ? 'warn' : ''} />
+              <Row label="计划风险金额" value={trade.riskAmount ? `${num(trade.riskAmount, 3)} U` : '—'} />
+              <Row label="R 倍数" value={trade.rMultiple ? num(trade.rMultiple, 2) : '不可计算'} />
+              <Row label="MFE / MAE" value="未计算" />
+              <div className="muted" style={{ fontSize: 10.5, marginTop: 8, lineHeight: 1.6 }}>
+                R = 净收益 / 计划风险；MFE/MAE 需历史 K 线，本期不提供。缺失时不会用 0 顶替。
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-hd">
+              <h2>标签</h2>
+              <span className="hint">点击切换</span>
+            </div>
+            <div className="card-bd" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {allTags.map((t) => {
+                const on = tagIds.includes(t.id);
+                const color = t.polarity === 'POSITIVE' ? C.neg : t.polarity === 'NEGATIVE' ? C.pos : C.t2;
+                return (
+                  <span
+                    key={t.id}
+                    className="tag"
+                    onClick={() => setTagIds((s) => (on ? s.filter((x) => x !== t.id) : [...s, t.id]))}
+                    style={{
+                      cursor: 'pointer',
+                      padding: '3px 8px',
+                      fontSize: 11,
+                      color: on ? color : C.t3,
+                      background: on ? (t.polarity === 'POSITIVE' ? 'var(--neg-soft)' : 'var(--pos-soft)') : 'var(--surface-2)',
+                      border: `1px solid ${on ? color : C.border}`,
+                      opacity: on ? 1 : 0.7,
+                    }}
+                  >
+                    {t.name}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PriceTrack({ trade }: { trade: Trade }) {
+  const W = 860;
+  const H = 200;
+
+  const geo = useMemo(() => {
+    const entry = Number(trade.entryPrice);
+    const exit = trade.exitPrice ? Number(trade.exitPrice) : entry;
+    const stop = trade.initialStopPrice ? Number(trade.initialStopPrice) : null;
+    const vals = [entry, exit, ...(stop ? [stop] : [])];
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const pad = (max - min) * 0.35 || max * 0.002;
+    const lo = min - pad;
+    const hi = max + pad;
+    const y = (v: number) => 24 + (1 - (v - lo) / (hi - lo)) * (H - 48);
+    return { entry, exit, stop, y, lo, hi };
+  }, [trade]);
+
+  const xEntry = 90;
+  const xExit = W - 90;
+  const win = trade.direction === 'LONG' ? geo.exit >= geo.entry : geo.exit <= geo.entry;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H}>
+      {geo.stop !== null && (
+        <>
+          <rect
+            x={xEntry}
+            y={Math.min(geo.y(geo.entry), geo.y(geo.stop))}
+            width={xExit - xEntry}
+            height={Math.abs(geo.y(geo.entry) - geo.y(geo.stop))}
+            fill={C.neg}
+            opacity="0.07"
+          />
+          <line x1={xEntry - 14} x2={xExit + 14} y1={geo.y(geo.stop)} y2={geo.y(geo.stop)} stroke={C.neg} strokeWidth="1" strokeDasharray="4 3" opacity="0.85" />
+          <text x={xExit + 20} y={geo.y(geo.stop)} fill={C.neg} fontSize="10.5" dominantBaseline="middle" fontFamily="var(--mono)">
+            止损 {num(trade.initialStopPrice, priceDp(trade.initialStopPrice))}
+          </text>
+        </>
+      )}
+
+      <rect
+        x={xEntry}
+        y={Math.min(geo.y(geo.entry), geo.y(geo.exit))}
+        width={xExit - xEntry}
+        height={Math.abs(geo.y(geo.entry) - geo.y(geo.exit))}
+        fill={win ? C.pos : C.neg}
+        opacity="0.1"
+      />
+
+      <line x1={xEntry - 14} x2={xExit + 14} y1={geo.y(geo.entry)} y2={geo.y(geo.entry)} stroke={C.t2} strokeWidth="1" strokeDasharray="4 3" />
+      <text x={xEntry - 20} y={geo.y(geo.entry)} fill={C.t2} fontSize="10.5" textAnchor="end" dominantBaseline="middle" fontFamily="var(--mono)">
+        开仓 {num(trade.entryPrice, priceDp(trade.entryPrice))}
+      </text>
+
+      <line x1={xEntry - 14} x2={xExit + 14} y1={geo.y(geo.exit)} y2={geo.y(geo.exit)} stroke={win ? C.pos : C.neg} strokeWidth="1" strokeDasharray="4 3" />
+      <text x={xEntry - 20} y={geo.y(geo.exit)} fill={win ? C.pos : C.neg} fontSize="10.5" textAnchor="end" dominantBaseline="middle" fontFamily="var(--mono)">
+        平仓 {num(trade.exitPrice ?? '—', priceDp(trade.exitPrice)) }
+      </text>
+
+      <path
+        d={`M${xEntry},${geo.y(geo.entry)} L${xExit},${geo.y(geo.exit)}`}
+        fill="none"
+        stroke={win ? C.pos : C.neg}
+        strokeWidth="2"
+      />
+      <circle cx={xEntry} cy={geo.y(geo.entry)} r="4" fill={C.tx} stroke={C.surface} strokeWidth="2" />
+      <circle cx={xExit} cy={geo.y(geo.exit)} r="4" fill={win ? C.pos : C.neg} stroke={C.surface} strokeWidth="2" />
+
+      <text x={xEntry} y={H - 12} fill={C.t3} fontSize="10" textAnchor="middle">
+        {dtFull(trade.entryTime).slice(5)}
+      </text>
+      <text x={xExit} y={H - 12} fill={C.t3} fontSize="10" textAnchor="middle">
+        {trade.exitTime ? dtFull(trade.exitTime).slice(5) : '持仓中'}
+      </text>
+    </svg>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <label style={{ fontSize: 11, color: C.t3 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Row({ label, value, cls, strong }: { label: string; value: string; cls?: string; strong?: boolean }) {
+  return (
+    <div className="stat-row">
+      <span>{label}</span>
+      <span className={`mono ${cls ?? ''}`} style={strong ? { fontWeight: 600, fontSize: 13 } : undefined}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function scoreColor(score: number | null): string {
+  if (score === null) return C.t2;
+  if (score >= 75) return C.neg;
+  if (score >= 50) return 'var(--warn)';
+  return C.pos;
+}
