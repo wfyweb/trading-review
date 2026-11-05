@@ -3,6 +3,7 @@ import { api, type Tag, type Trade } from '../lib/api';
 import { num, signed, pnlClass, dtFull, duration, REGIME_LABEL, EMOTIONS, priceDp, qtyDp } from '../lib/format';
 import { go } from '../lib/router';
 import { C } from '../lib/colors';
+import { CandleChart, type CandlePoint } from '../components/CandleChart';
 import { ErrorCard, Loading } from './Overview';
 
 export function TradeDetailPage({ id }: { id: string }) {
@@ -26,6 +27,11 @@ export function TradeDetailPage({ id }: { id: string }) {
   });
   const [tagIds, setTagIds] = useState<string[]>([]);
 
+  const [candles, setCandles] = useState<CandlePoint[]>([]);
+  const [candleMeta, setCandleMeta] = useState<{ granularity: string; coverage: number; fromCache: boolean; warning: string | null } | null>(null);
+  const [loadingCandles, setLoadingCandles] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+
   useEffect(() => {
     Promise.all([api.trade(id), api.tags()])
       .then(([t, tags]) => {
@@ -44,9 +50,39 @@ export function TradeDetailPage({ id }: { id: string }) {
           improvementAction: t.review?.improvementAction ?? '',
           executionScore: t.executionScore ? String(t.executionScore) : '',
         });
+
+        // K 线：区间向两端各留 5 分钟，保证开平仓点都在图内
+        if (t.exitTime) {
+          setLoadingCandles(true);
+          const from = new Date(new Date(t.entryTime).getTime() - 5 * 60_000).toISOString();
+          const to = new Date(new Date(t.exitTime).getTime() + 5 * 60_000).toISOString();
+          api
+            .candles({ symbol: t.symbol, from, to })
+            .then((r) => {
+              setCandles(r.candles);
+              setCandleMeta({ granularity: r.granularity, coverage: r.coverage, fromCache: r.fromCache, warning: r.warning });
+            })
+            .catch(() => setCandles([]))
+            .finally(() => setLoadingCandles(false));
+        }
       })
       .catch((e) => setErr(e.message));
   }, [id]);
+
+  /** 单笔重算 MFE/MAE，算完刷新本页数据 */
+  const recalcMfe = async () => {
+    setCalculating(true);
+    try {
+      const r = await api.mfeOne(id, true);
+      const t = await api.trade(id);
+      setTrade(t);
+      if (r.status === 'NO_DATA') alert(`未取到 K 线：${r.warning ?? '该区间超出交易所历史深度'}`);
+    } catch (e: any) {
+      alert(`重算失败：${e.message}`);
+    } finally {
+      setCalculating(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -67,6 +103,8 @@ export function TradeDetailPage({ id }: { id: string }) {
   if (!trade) return <Loading />;
 
   const missingStop = !trade.initialStopPrice;
+  const mfe = parseExtremum(trade.mfe);
+  const mae = parseExtremum(trade.mae);
 
   return (
     <div className="page">
@@ -150,11 +188,40 @@ export function TradeDetailPage({ id }: { id: string }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="card">
             <div className="card-hd">
-              <h2>价格轨迹</h2>
-              <span className="hint">仅用成交价还原，非 K 线（本期不做行情重建）</span>
+              <h2>K 线重建</h2>
+              <span className="hint">
+                {loadingCandles
+                  ? '加载中…'
+                  : candleMeta
+                    ? `${candleMeta.granularity} · ${candles.length} 根 · 覆盖 ${(candleMeta.coverage * 100).toFixed(0)}%${candleMeta.fromCache ? ' · 本地缓存' : ''}`
+                    : ''}
+              </span>
             </div>
             <div className="card-bd">
-              <PriceTrack trade={trade} />
+              {loadingCandles ? (
+                <div className="empty" style={{ padding: '28px 0' }}>
+                  正在加载 K 线…
+                </div>
+              ) : candles.length > 0 ? (
+                <CandleChart
+                  candles={candles}
+                  direction={trade.direction}
+                  entryPrice={trade.entryPrice}
+                  exitPrice={trade.exitPrice}
+                  stopPrice={trade.initialStopPrice}
+                  mfe={parseExtremum(trade.mfe)}
+                  mae={parseExtremum(trade.mae)}
+                  entryTime={trade.entryTime}
+                  exitTime={trade.exitTime}
+                />
+              ) : (
+                <>
+                  <PriceTrack trade={trade} />
+                  <div className="muted" style={{ fontSize: 10.5, marginTop: 6 }}>
+                    降级为成交点轨迹：{candleMeta?.warning ?? '未取到该区间 K 线'}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -246,14 +313,32 @@ export function TradeDetailPage({ id }: { id: string }) {
           <div className="card">
             <div className="card-hd">
               <h2>风险口径</h2>
+              <span className="hint">{trade.candleStatus === 'OK' ? 'K 线已算' : trade.candleStatus === 'PARTIAL' ? 'K 线不完整' : trade.candleStatus === 'NO_DATA' ? '无 K 线' : '未算 K 线'}</span>
             </div>
             <div className="card-bd" style={{ paddingTop: 6 }}>
               <Row label="开仓止损价" value={trade.initialStopPrice ? num(trade.initialStopPrice, priceDp(trade.initialStopPrice)) : '未记录'} cls={missingStop ? 'warn' : ''} />
               <Row label="计划风险金额" value={trade.riskAmount ? `${num(trade.riskAmount, 3)} U` : '—'} />
               <Row label="R 倍数" value={trade.rMultiple ? num(trade.rMultiple, 2) : '不可计算'} />
-              <Row label="MFE / MAE" value="未计算" />
+              <Row
+                label="MFE 最大有利"
+                value={mfe ? `${Number(mfe.pct) > 0 ? '+' : ''}${num(mfe.pct, 2)}% · ${signed(mfe.usdt, 3)} U${mfe.r ? ` · ${num(mfe.r, 2)}R` : ''}` : '未计算'}
+                cls={mfe ? 'pos' : ''}
+              />
+              <Row
+                label="MAE 最大不利"
+                value={mae ? `${num(mae.pct, 2)}% · ${signed(mae.usdt, 3)} U${mae.r ? ` · ${num(mae.r, 2)}R` : ''}` : '未计算'}
+                cls={mae ? 'neg' : ''}
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                <button className="btn ghost" style={{ fontSize: 11, padding: '3px 10px' }} disabled={calculating} onClick={recalcMfe}>
+                  {calculating ? '计算中…' : '重算 K 线指标'}
+                </button>
+                <span className="muted" style={{ fontSize: 10 }}>
+                  {trade.candleStatus === 'PARTIAL' ? '该区间 K 线不足 90%，数值仅供参考' : ''}
+                </span>
+              </div>
               <div className="muted" style={{ fontSize: 10.5, marginTop: 8, lineHeight: 1.6 }}>
-                R = 净收益 / 计划风险；MFE/MAE 需历史 K 线，本期不提供。缺失时不会用 0 顶替。
+                R = 净收益 / 计划风险；MFE/MAE 用持仓区间的 K 线最高/最低价计算，衡量「跑早了没有 / 止损是不是太紧」，不是真实成交路径。
               </div>
             </div>
           </div>
@@ -398,4 +483,16 @@ function scoreColor(score: number | null): string {
   if (score >= 75) return C.neg;
   if (score >= 50) return 'var(--warn)';
   return C.pos;
+}
+
+/** MFE/MAE 在库里是 JSON 字符串，解析失败就当未计算（不用 0 顶替） */
+function parseExtremum(raw: string | null): { pct: string; usdt: string; r: string | null; at: string } | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (typeof v?.pct !== 'string' && typeof v?.pct !== 'number') return null;
+    return { pct: String(v.pct), usdt: String(v.usdt ?? '0'), r: v.r === null || v.r === undefined ? null : String(v.r), at: String(v.at ?? '') };
+  } catch {
+    return null;
+  }
 }

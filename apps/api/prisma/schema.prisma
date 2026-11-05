@@ -66,6 +66,10 @@ model Order {
   averagePrice String?
   createdAt    DateTime
   updatedAt    DateTime
+  /// 相对下单时刻市价的滑点（基点，正数=对交易者不利）；MVP-3 滑点统计写入
+  slippageBps   String?
+  /// 滑点计算所用的参考价来源：CANDLE_1M | CANDLE_5M | NONE
+  slippageSource String?
   rawPayload   String
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -152,9 +156,15 @@ model Trade {
   /// PLANNED_STOP | NONE
   rMultipleSource String?
 
-  /// 本期恒为 null（不做 K 线）
+  /// 持仓期间最大有利偏移，JSON：{"pct":"0.42","usdt":"1.23","r":"1.10","at":"ISO"}
   mfe String?
+  /// 持仓期间最大不利偏移，JSON：{"pct":"-0.18","usdt":"-0.52","r":"-0.42","at":"ISO"}
   mae String?
+  /// 冗余列：便于按幅度排序 / 聚合统计（百分比，4 位小数）
+  mfePct String?
+  maePct String?
+  /// K 线区间统计状态：PENDING | OK | NO_DATA | PARTIAL
+  candleStatus String @default("PENDING")
 
   strategyId   String?
   /// TREND_UP | TREND_DOWN | RANGE | HIGH_VOL | NEWS
@@ -352,6 +362,26 @@ model SyncJob {
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId, createdAt])
+}
+
+/// K 线缓存（MVP-3）：MFE/MAE、滑点、单笔 K 线图共用
+/// 拉取层与计算层分离——同一根 K 线只从交易所取一次，之后全走本地
+model Candle {
+  id          String   @id @default(cuid())
+  symbol      String
+  /// 归一化周期：1m | 5m | 15m | 1h | 4h | 1d
+  granularity String
+  /// 该根 K 线的开盘时间（UTC）
+  openTime    DateTime
+  open        String
+  high        String
+  low         String
+  close       String
+  volume      String
+  createdAt   DateTime @default(now())
+
+  @@unique([symbol, granularity, openTime])
+  @@index([symbol, openTime])
 }
 
 /// 键值配置（口径开关、UI 偏好）

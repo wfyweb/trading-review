@@ -63,6 +63,12 @@ export interface Trade {
   reviewStatus: string;
   matchingStatus: string;
   feeUnconverted: boolean;
+  /** JSON 字符串：{"pct","usdt","r","at"}，K 线未算时为 null */
+  mfe: string | null;
+  mae: string | null;
+  mfePct: string | null;
+  maePct: string | null;
+  candleStatus: 'PENDING' | 'OK' | 'NO_DATA' | 'PARTIAL';
   tags: Tag[];
   review: Review | null;
   display: { netPnl: string; grossPnl: string; rMultiple: string | null; tradingFee: string; isWin: boolean };
@@ -284,6 +290,43 @@ export const api = {
   strategies: () => req<Strategy[]>('/strategies'),
   tags: () => req<Tag[]>('/tags'),
   symbols: () => req<string[]>('/trades/symbols'),
+
+  /** K 线（含本地缓存）。fetch=0 时只读缓存不联网 */
+  candles: (p: { symbol: string; from: string; to: string; granularity?: string; fetch?: boolean }) =>
+    req<{
+      symbol: string;
+      granularity: string;
+      candles: { openTime: number; open: string; high: string; low: string; close: string; volume: string }[];
+      coverage: number;
+      fromCache: boolean;
+      warning: string | null;
+      count: number;
+    }>(
+      `/market/candles${qs({
+        symbol: p.symbol,
+        from: p.from,
+        to: p.to,
+        granularity: p.granularity,
+        fetch: p.fetch === false ? '0' : undefined,
+      })}`,
+    ),
+
+  mfeCoverage: () =>
+    req<{ closedTrades: number; pending: number; ok: number; partial: number; noData: number; coveragePct: string }>(
+      '/analytics/mfe/coverage',
+    ),
+
+  mfeRecompute: (body: { from?: string; to?: string; symbols?: string[]; force?: boolean; allowFetch?: boolean; limit?: number } = {}) =>
+    req<{ total: number; processed: number; ok: number; partial: number; noData: number; skipped: number; failed: number; failures: { tradeId: string; symbol: string; error: string }[] }>(
+      '/analytics/mfe/recompute',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  mfeOne: (tradeId: string, allowFetch = true) =>
+    req<{ status: string; granularity?: string; coverage?: number; warning?: string; message?: string }>(
+      `/analytics/mfe/${tradeId}`,
+      { method: 'POST', body: JSON.stringify({ allowFetch }) },
+    ),
 
   createTrade: (body: Record<string, unknown>) => req<Trade>('/trades', { method: 'POST', body: JSON.stringify(body) }),
 
