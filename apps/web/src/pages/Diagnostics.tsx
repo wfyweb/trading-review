@@ -138,13 +138,17 @@ export function DiagnosticsPage({ filters }: { filters: Filters }) {
                 {scoreSummary.buckets.map((b) => {
                   const max = Math.max(...scoreSummary.buckets.map((x) => x.count), 1);
                   return (
-                    <div key={b.label} style={{ flex: 1, textAlign: 'center' }}>
+                    <div
+                      key={b.label}
+                      style={{ flex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
+                    >
                       <div
                         style={{
-                          height: Math.max(2, (b.count / max) * 40),
-                          background: b.min >= 75 ? '#12b76a' : b.min >= 60 ? '#e8a33d' : '#e5484d',
-                          opacity: 0.55,
-                          borderRadius: 2,
+                          width: '52%',
+                          height: Math.max(2, (b.count / max) * 34),
+                          background: b.min >= 75 ? '#6f8b73' : b.min >= 60 ? '#b08d57' : '#a05b52',
+                          opacity: 0.45,
+                          borderRadius: 1,
                         }}
                       />
                       <div className="muted" style={{ fontSize: 9.5, marginTop: 3 }}>{b.label}</div>

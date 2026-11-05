@@ -201,7 +201,7 @@ export function SettingsPage() {
           </div>
           <div className="card-bd" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {config.credentialSource === 'ENV' && (
-              <div className="banner" style={{ borderColor: 'rgba(53,235,104,.3)', background: 'rgba(53,235,104,.07)', color: '#b6f5c9' }}>
+              <div className="banner" style={{ borderColor: '#d3ddcd', background: '#eef2ec', color: '#5f7a63' }}>
                 <strong>已从 .env 读取密钥</strong>
                 <span className="vline" />
                 <span>{config.apiKeyMasked}｜如需更换，改 apps/api/.env 后重启，或在下方填写保存覆盖</span>
@@ -388,7 +388,7 @@ export function SettingsPage() {
 
       <div className="card" style={{ borderColor: 'rgba(254,84,91,.28)' }}>
         <div className="card-hd">
-          <h2 style={{ color: '#ffc4c7' }}>清空数据</h2>
+          <h2 style={{ color: 'var(--danger)' }}>清空数据</h2>
           <span className="hint">重新导入前先清场，避免新旧数据混在一起</span>
         </div>
         <div className="card-bd" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -417,7 +417,7 @@ export function SettingsPage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12.5, marginBottom: 3, color: '#ffc4c7' }}>清空全部交易数据</div>
+              <div style={{ fontSize: 12.5, marginBottom: 3, color: 'var(--danger)' }}>清空全部交易数据</div>
               <div className="muted" style={{ fontSize: 11, lineHeight: 1.6 }}>
                 连手工录入和演示数据一起删掉，交易、成交、订单、流水、同步记录、复盘记录全部清空。
                 <b>账户、策略、标签会保留。</b>不可撤销。
@@ -425,7 +425,7 @@ export function SettingsPage() {
             </div>
             <button
               className="btn"
-              style={{ borderColor: 'rgba(254,84,91,.5)', color: '#ffc4c7' }}
+              style={{ borderColor: 'color-mix(in srgb, var(--danger) 45%, transparent)', color: 'var(--danger)' }}
               onClick={async () => {
                 const typed = prompt('这一步不可撤销。请输入「清空」两个字以确认：');
                 if (typed !== '清空') {

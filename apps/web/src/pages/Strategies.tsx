@@ -312,11 +312,12 @@ export function StrategiesPage({ filters }: { filters: Filters }) {
                 <Mini label="盈亏比" value={s.profitFactor ? num(s.profitFactor, 2) : '—'} />
               </div>
 
-              <div style={{ display: 'flex', height: 6, borderRadius: 3, background: 'var(--surface-2)', overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{ display: 'flex', height: 3, borderRadius: 1, background: 'var(--surface-3)', overflow: 'hidden', marginBottom: 10 }}>
                 <div
                   style={{
                     width: `${(Math.abs(Number(s.netPnl)) / maxAbs) * 100}%`,
                     background: Number(s.netPnl) >= 0 ? 'var(--pos)' : 'var(--neg)',
+                    opacity: 0.55,
                   }}
                 />
               </div>

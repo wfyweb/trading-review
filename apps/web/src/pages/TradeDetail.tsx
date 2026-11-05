@@ -146,7 +146,7 @@ export function TradeDetailPage({ id }: { id: string }) {
         </button>
         <button
           className="btn"
-          style={{ borderColor: 'rgba(254,84,91,.4)', color: '#ffc4c7' }}
+          style={{ borderColor: 'color-mix(in srgb, var(--danger) 40%, transparent)', color: 'var(--danger)' }}
           onClick={async () => {
             if (!confirm('删除这笔交易？复盘记录与标签会一起删除，不可恢复。')) return;
             try {
@@ -361,7 +361,7 @@ export function TradeDetailPage({ id }: { id: string }) {
                       <div className="muted" style={{ fontSize: 10 }}>偏差</div>
                       <div
                         className="mono"
-                        style={{ fontSize: 19, color: score.deviation === null ? C.t3 : score.deviation > 0 ? 'var(--warn)' : C.accent }}
+                        style={{ fontSize: 19, color: score.deviation === null ? C.t3 : score.deviation > 0 ? 'var(--warn)' : 'var(--accent-ink)' }}
                       >
                         {score.deviation === null ? '—' : score.deviation > 0 ? `+${score.deviation}` : score.deviation}
                       </div>
@@ -590,9 +590,9 @@ function Row({ label, value, cls, strong }: { label: string; value: string; cls?
  */
 function scoreColor(score: number | null): string {
   if (score === null) return C.t2;
-  if (score >= 75) return '#12b76a';
-  if (score >= 50) return '#e8a33d';
-  return '#e5484d';
+  if (score >= 75) return '#6f8b73';
+  if (score >= 50) return '#b08d57';
+  return '#a05b52';
 }
 
 /** MFE/MAE 在库里是 JSON 字符串，解析失败就当未计算（不用 0 顶替） */

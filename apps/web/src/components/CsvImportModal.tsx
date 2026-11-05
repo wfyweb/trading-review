@@ -118,7 +118,7 @@ export function CsvImportModal({
       )}
 
       {result && (
-        <div className={`banner ${result.failed > 0 ? '' : ''}`} style={result.failed === 0 ? { borderColor: 'rgba(53,235,104,.3)', background: 'rgba(53,235,104,.07)', color: '#b6f5c9' } : undefined}>
+        <div className={`banner ${result.failed > 0 ? '' : ''}`} style={result.failed === 0 ? { borderColor: '#d3ddcd', background: '#eef2ec', color: '#5f7a63' } : undefined}>
           <strong>
             导入完成：成功 {result.imported} 条，失败 {result.failed} 条
           </strong>

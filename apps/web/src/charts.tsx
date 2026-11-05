@@ -75,11 +75,11 @@ export function EquityChart({ points, baseline, height = 240 }: Props) {
       >
         <defs>
           <linearGradient id="eqUp" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C.pos} stopOpacity="0.26" />
+            <stop offset="0%" stopColor={C.pos} stopOpacity="0.18" />
             <stop offset="100%" stopColor={C.pos} stopOpacity="0" />
           </linearGradient>
           <linearGradient id="eqDown" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C.neg} stopOpacity="0.26" />
+            <stop offset="0%" stopColor={C.neg} stopOpacity="0.18" />
             <stop offset="100%" stopColor={C.neg} stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -108,7 +108,7 @@ export function EquityChart({ points, baseline, height = 240 }: Props) {
         </text>
 
         <path d={geo.area} fill={`url(#${gid})`} />
-        <path d={geo.line} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
+        <path d={geo.line} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
 
         {geo.xTicks.map((t) => (
           <text key={t.i} x={geo.x(t.i)} y={H - 8} fill={C.t3} fontSize="10" textAnchor="middle">
@@ -182,7 +182,7 @@ export function DrawdownChart({ points, height = 90 }: { points: EquityPoint[]; 
             width={Math.max(1.5, bw * 0.6)}
             height={h}
             fill={C.neg}
-            opacity={Number(p.drawdownPct) === 0 ? 0.12 : 0.42}
+            opacity={Number(p.drawdownPct) === 0 ? 0.1 : 0.32}
             rx="1"
           />
         );
@@ -221,7 +221,7 @@ export function DailyBars({ data, height = 120 }: { data: { date: string; netPnl
             width={Math.max(2, bw * 0.56)}
             height={Math.max(1.5, h)}
             fill={v >= 0 ? C.pos : C.neg}
-            opacity="0.72"
+            opacity="0.55"
             rx="1.5"
           />
         );

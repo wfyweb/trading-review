@@ -13,12 +13,12 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 40, fontFamily: 'sans-serif', color: '#1f2a37' }}>
+        <div style={{ padding: 40, fontFamily: 'sans-serif', color: '#3a352f' }}>
           <h1 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>页面渲染出错</h1>
-          <pre style={{ fontSize: 12, color: '#5a6b7b', whiteSpace: 'pre-wrap' }}>{String(this.state.error?.message)}</pre>
+          <pre style={{ fontSize: 12, color: '#7a736b', whiteSpace: 'pre-wrap' }}>{String(this.state.error?.message)}</pre>
           <button
             onClick={() => location.reload()}
-            style={{ marginTop: 16, padding: '6px 12px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#f1f4f8', color: '#1f2a37', cursor: 'pointer' }}
+            style={{ marginTop: 16, padding: '6px 12px', borderRadius: 6, border: '1px solid #d7cfc2', background: '#f2eee7', color: '#3a352f', cursor: 'pointer' }}
           >
             重新加载
           </button>

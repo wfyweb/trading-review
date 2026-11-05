@@ -59,8 +59,8 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark">TR</div>
           <div>
-            <div className="brand-name">交易复盘工作台</div>
-            <div className="brand-sub">trading review</div>
+            <div className="brand-name">Trading Review</div>
+            <div className="brand-sub">交易复盘工作台</div>
           </div>
         </div>
 

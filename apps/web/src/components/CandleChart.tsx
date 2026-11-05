@@ -25,7 +25,7 @@ interface Props {
 const PAD = { top: 16, right: 58, bottom: 22, left: 8 };
 const HEIGHT = 300;
 /** 无对应主题变量的辅助色 */
-const AMBER = '#e8a33d';
+const AMBER = '#b08d57';
 
 /** 估算文本像素宽度：中文字宽约 9.6px，ASCII 约 5.6px（9.5px 等宽字体） */
 function textWidth(s: string): number {

@@ -11,30 +11,30 @@ function v(name: string, fallback: string): string {
 
 export const C = {
   get pos() {
-    return v('--pos', '#fe4b5b');
+    return v('--pos', '#b0655a');
   },
   get neg() {
-    return v('--neg', '#35eb68');
+    return v('--neg', '#6f8b73');
   },
   get t2() {
-    return v('--text-2', '#5a6b7b');
+    return v('--text-2', '#7a736b');
   },
   get t3() {
-    return v('--text-3', '#8a99a8');
+    return v('--text-3', '#9a9086');
   },
   get tx() {
-    return v('--text', '#1f2a37');
+    return v('--text', '#3a352f');
   },
   get surface() {
-    return v('--surface', '#ffffff');
+    return v('--surface', '#fbfaf7');
   },
   get border() {
-    return v('--border', '#e2e8f0');
+    return v('--border', '#e4ded4');
   },
   get borderStrong() {
-    return v('--border-strong', '#cbd5e1');
+    return v('--border-strong', '#d7cfc2');
   },
   get accent() {
-    return v('--accent', '#0ea5b7');
+    return v('--accent', '#a89a86');
   },
 };
