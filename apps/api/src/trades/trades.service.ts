@@ -277,8 +277,8 @@ export class TradesService {
     const holdingMin = (t: any) => (t.holdingSeconds === null ? null : Math.round(t.holdingSeconds / 60));
 
     const headers = [
-      '开仓时间', '平仓时间', '交易对', '方向', '状态',
-      '开仓价', '平仓价', '数量', '杠杆', '初始止损',
+      '开仓时间', '平仓时间', '交易对', '方向', '状态', '爆仓',
+      '开仓价', '平仓价', '数量', '杠杆', '保证金', '初始止损',
       '毛收益', '手续费', '资金费率', '净收益', 'R倍数',
       '持仓(分钟)', '策略', '行情环境', '形态', '标签',
       '执行评分', '复盘状态', '复盘结论',
@@ -290,10 +290,12 @@ export class TradesService {
       t.symbol,
       t.direction === 'LONG' ? '多' : '空',
       t.status === 'OPEN' ? '持仓中' : t.status === 'NEEDS_REVIEW' ? '待确认' : '已平仓',
+      t.isLiquidation ? `是(${t.liquidationCount})` : '否',
       n(t.entryPrice),
       t.exitPrice ? n(t.exitPrice) : null,
       n(t.quantity),
       t.actualLeverage ? n(t.actualLeverage) : null,
+      t.margin ? n(t.margin) : null,
       t.initialStopPrice ? n(t.initialStopPrice) : null,
       n(t.grossPnl),
       n(t.tradingFee),

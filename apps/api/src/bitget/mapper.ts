@@ -129,3 +129,48 @@ export function extractList(res: any, keys: string[]): { list: any[]; cursor?: s
   }
   return { list: [], hasMore: false };
 }
+
+/** 爆仓成交判定：Bitget 用 tradeSide = burst_close_long / burst_close_short 标记强制平仓 */
+export function isLiquidationFill(raw: any): boolean {
+  const tradeSide = String(pick(raw, ['tradeSide', 'tradeSideType']) ?? '').toLowerCase();
+  if (tradeSide.includes('burst_close')) return true;
+  if (tradeSide.includes('liq')) return true;
+  // 少数情况下标记在 reduceReason / closeReason 里
+  const reason = String(pick(raw, ['reduceReason', 'closeReason', 'remark']) ?? '').toLowerCase();
+  return reason.includes('liquidat') || reason.includes('burst');
+}
+
+/**
+ * 持仓历史映射。
+ * 杠杆/保证金在不同接口里的键名不一致：
+ *   leverage / openLeverage / crossLeverage
+ *   marginSize / openMarginSize / im / isolatedMargin
+ * 取不到就留 null（UI 显示"—"），不用 0 顶替。
+ */
+export function mapPosition(raw: any) {
+  const holdSide = String(pick(raw, ['holdSide', 'posSide', 'positionSide']) ?? 'BOTH').toUpperCase();
+  return {
+    positionId: String(pick(raw, ['positionId', 'posId', 'id']) ?? `${pick(raw, ['symbol'])}|${pick(raw, ['ctime', 'cTime', 'createdTime'])}`),
+    symbol: String(pick(raw, ['symbol']) ?? ''),
+    holdSide: holdSide === 'LONG' || holdSide === 'SHORT' ? holdSide : 'BOTH',
+    marginMode: pick(raw, ['marginMode', 'tradeMode']) ? String(pick(raw, ['marginMode', 'tradeMode'])).toLowerCase() : null,
+    leverage: (() => {
+      const v = pick(raw, ['leverage', 'openLeverage', 'crossLeverage', 'posLeverage']);
+      return v === undefined ? null : String(v);
+    })(),
+    marginSize: (() => {
+      const v = pick(raw, ['marginSize', 'openMarginSize', 'im', 'isolatedMargin', 'margin']);
+      return v === undefined ? null : String(v);
+    })(),
+    openAvgPrice: pick(raw, ['openAvgPrice', 'openPriceAvg', 'avgOpenPrice', 'entryPrice']) ?? null,
+    closeAvgPrice: pick(raw, ['closeAvgPrice', 'closePriceAvg', 'avgClosePrice']) ?? null,
+    totalQty: pick(raw, ['openTotalPos', 'total', 'qty', 'openSize', 'size']) ?? null,
+    liquidatePrice: pick(raw, ['liquidatePrice', 'liqPrice', 'liquidationPrice']) ?? null,
+    pnl: pick(raw, ['pnl', 'profit']) ?? null,
+    netProfit: pick(raw, ['netProfit', 'netPnl']) ?? null,
+    totalFunding: pick(raw, ['totalFunding', 'funding']) ?? null,
+    cTime: toNum(pick(raw, ['ctime', 'cTime', 'createdTime', 'openTime'])),
+    uTime: toNum(pick(raw, ['utime', 'uTime', 'updatedTime', 'closeTime'])) || toNum(pick(raw, ['ctime', 'cTime', 'createdTime'])),
+    raw,
+  };
+}

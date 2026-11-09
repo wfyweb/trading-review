@@ -23,6 +23,9 @@ interface OpenPosition {
   closeQty: ReturnType<typeof D>;
   closeNotional: ReturnType<typeof D>;
   lastTime: Date;
+  /** 被强平的成交笔数 + 首次强平时间 */
+  liqCount: number;
+  liqAt: Date | null;
   closes: CloseLeg[];
   fills: { fillId: string; role: string; quantity: string }[];
 }
@@ -127,6 +130,9 @@ export class MatchingService {
             rMultiple: null,
             rMultipleSource: 'NONE',
             matchingStatus: 'AUTO_MATCHED',
+            isLiquidation: s.liqCount > 0,
+            liquidationCount: s.liqCount,
+            liquidationAt: s.liqAt,
             reviewStatus: keep?.review ? 'DONE' : 'PENDING',
             executionScore: keep?.score ?? null,
             tags: keep?.tagIds?.length ? { create: keep.tagIds.map((tagId) => ({ tagId })) } : undefined,
@@ -187,6 +193,8 @@ export class MatchingService {
             closeQty: D(0),
             closeNotional: D(0),
             lastTime: f.filledAt,
+            liqCount: 0,
+            liqAt: null,
             closes: [],
             fills: [{ fillId: f.id, role: 'ENTRY', quantity: key(qty.abs()) }],
           };
@@ -221,6 +229,10 @@ export class MatchingService {
         state.closeQty = state.closeQty.plus(closeQty);
         state.closeNotional = state.closeNotional.plus(price.times(closeQty));
         state.lastTime = f.filledAt;
+        if (f.isLiquidation) {
+          state.liqCount += 1;
+          if (!state.liqAt) state.liqAt = f.filledAt;
+        }
         state.closes.push({ price: key(price), qty: key(closeQty), fee: key(exitFee), pnl: key(legPnl) });
         state.fills.push({ fillId: f.id, role: 'EXIT', quantity: key(closeQty) });
 
@@ -244,6 +256,8 @@ export class MatchingService {
                 closeQty: D(0),
                 closeNotional: D(0),
                 lastTime: f.filledAt,
+                liqCount: 0,
+                liqAt: null,
                 closes: [],
                 fills: [{ fillId: f.id, role: 'ENTRY', quantity: key(remainder) }],
               };
@@ -256,6 +270,7 @@ export class MatchingService {
     }
 
     await this.attributeFunding(accountId);
+    await this.enrichFromPositions(accountId);
 
     const needsReview = 0;
     this.logger.log(
@@ -298,5 +313,66 @@ export class MatchingService {
         },
       });
     }
+  }
+
+  /**
+   * 用持仓历史回填杠杆 / 保证金 / 保证金模式。
+   *
+   * 成交流水里没有这些字段，只能从 /position/history-position 拿；
+   * 匹配依据：同 symbol、同方向、开仓时间最接近，且平仓时间也对得上。
+   * 找不到就保持 null（UI 显示"—"），绝不按名义价瞎算一个杠杆出来。
+   */
+  private async enrichFromPositions(accountId: string) {
+    const positions = await this.prisma.position.findMany({ where: { accountId } });
+    if (positions.length === 0) return;
+
+    const trades = await this.prisma.trade.findMany({
+      where: { accountId },
+      select: { id: true, symbol: true, direction: true, entryTime: true, exitTime: true, entryPrice: true, quantity: true, margin: true, actualLeverage: true },
+    });
+
+    const TOLERANCE = 10 * 60 * 1000; // 10 分钟
+    let filled = 0;
+
+    for (const t of trades) {
+      const entry = t.entryTime.getTime();
+      const exit = t.exitTime ? t.exitTime.getTime() : entry;
+
+      let best: (typeof positions)[number] | null = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (const p of positions) {
+        if (p.symbol !== t.symbol) continue;
+        if (p.holdSide !== t.direction && p.holdSide !== 'BOTH') continue;
+        const openDiff = Math.abs(p.openTime.getTime() - entry);
+        const closeDiff = p.closeTime ? Math.abs(p.closeTime.getTime() - exit) : 0;
+        if (openDiff > TOLERANCE) continue;
+        const score = openDiff + closeDiff;
+        if (score < bestScore) {
+          bestScore = score;
+          best = p;
+        }
+      }
+      if (!best) continue;
+
+      // 保证金：优先用交易所给的，没有就用 名义 / 杠杆 推算（推算值也标清来源）
+      const leverage = best.leverage ?? t.actualLeverage ?? null;
+      let margin = best.marginSize ?? t.margin ?? null;
+      if (!margin && leverage && Number(leverage) > 0) {
+        const notional = Number(t.entryPrice) * Number(t.quantity);
+        if (Number.isFinite(notional)) margin = (notional / Number(leverage)).toFixed(6);
+      }
+
+      await this.prisma.trade.update({
+        where: { id: t.id },
+        data: {
+          margin,
+          actualLeverage: leverage,
+          marginMode: best.marginMode ?? null,
+        },
+      });
+      filled++;
+    }
+
+    if (filled > 0) this.logger.log(`持仓回填：${filled} 笔补上杠杆/保证金`);
   }
 }

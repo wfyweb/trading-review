@@ -43,6 +43,7 @@ model Account {
   fills      Fill[]
   trades     Trade[]
   ledgers    Ledger[]
+  positions  Position[]
   syncJobs   SyncJob[]
   snapshots  EquitySnapshot[]
   strategies Strategy[]
@@ -92,6 +93,8 @@ model Fill {
   feeCoin   String?
   /// 交易所返回的已实现盈亏（不含手续费）
   execPnl   String?
+  /// 强制平仓成交（Bitget rawPayload.tradeSide = burst_close_long / burst_close_short）
+  isLiquidation Boolean @default(false)
   filledAt  DateTime
   rawPayload String
 
@@ -125,9 +128,18 @@ model Trade {
 
   /// 保证金（USDT）
   margin          String?
+  /// crossed | isolated
+  marginMode      String?
   plannedLeverage String?
   /// 名义仓位 / 保证金
   actualLeverage  String?
+
+  /// 是否发生过强制平仓（爆仓），由成交的 burst_close 标记聚合而来
+  isLiquidation    Boolean   @default(false)
+  /// 该笔交易内被强平的成交笔数
+  liquidationCount Int       @default(0)
+  /// 首次强平时间
+  liquidationAt    DateTime?
 
   /// 首次开仓时的止损价（R 倍数主口径的来源）
   initialStopPrice String?
@@ -383,6 +395,39 @@ model Candle {
 
   @@unique([symbol, granularity, openTime])
   @@index([symbol, openTime])
+}
+
+/// 持仓历史（原始层）：杠杆 / 保证金 / 强平价只能从这里拿，成交流水里没有
+model Position {
+  id         String @id @default(cuid())
+  accountId  String
+  positionId String
+  symbol     String
+  /// LONG | SHORT
+  holdSide   String
+  /// crossed | isolated
+  marginMode String?
+  /// 杠杆倍数
+  leverage   String?
+  /// 占用保证金（USDT）
+  marginSize String?
+  openAvgPrice  String?
+  closeAvgPrice String?
+  /// 开仓总量
+  totalQty   String?
+  /// 强平价（无强平价为空）
+  liquidatePrice String?
+  pnl        String?
+  netProfit  String?
+  totalFunding String?
+  openTime   DateTime
+  closeTime  DateTime?
+  rawPayload String
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, positionId])
+  @@index([accountId, symbol, openTime])
 }
 
 /// 键值配置（口径开关、UI 偏好）

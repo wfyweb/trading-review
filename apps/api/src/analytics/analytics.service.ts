@@ -375,6 +375,32 @@ export class AnalyticsService {
       });
     }
 
+    // R11 近 30 天强制平仓（爆仓）：比收益率更早暴露杠杆/仓位结构问题
+    const liqAll = rows.filter((t: any) => t.isLiquidation);
+    if (liqAll.length > 0) {
+      const lastTs = rows.reduce((mx: number, t: any) => {
+        const ts = new Date(t.exitTime ?? t.entryTime).getTime();
+        return Number.isFinite(ts) ? Math.max(mx, ts) : mx;
+      }, 0);
+      const windowStart = lastTs - 30 * 86400_000;
+      const recentLiq = liqAll.filter((t: any) => new Date(t.exitTime ?? t.entryTime).getTime() >= windowStart);
+      if (recentLiq.length >= 2) {
+        const liqLoss = recentLiq.reduce((sum: any, t: any) => sum.plus(D(t.netPnl)), D(0));
+        const symbols = Array.from(new Set(recentLiq.map((t: any) => t.symbol))).join('、');
+        issues.push({
+          code: 'R11',
+          level: 'HIGH',
+          title: `近 30 天被强制平仓 ${recentLiq.length} 次`,
+          detail:
+            `涉及 ${symbols}，合计净收益 ${key(liqLoss, 2)} U。爆仓不是运气问题，是杠杆与仓位结构撑不住正常波动：` +
+            `同一方向的仓位在逆行时被继续加码，保证金耗尽就会被动离场。先降杠杆或缩仓位，再谈策略。`,
+          threshold: '近 30 天强制平仓次数 ≥ 2',
+          sampleSize: recentLiq.length,
+          tradeIds: recentLiq.map((t: any) => t.id),
+        });
+      }
+    }
+
     // R10 手续费吞噬毛利（与 R5 的区别：R5 看净利，这里看毛利）
     const grossAbs = D(perf.grossPnl).abs();
     const feeToGross = grossAbs.isZero() ? D(0) : D(perf.totalFee).div(grossAbs);
@@ -393,7 +419,7 @@ export class AnalyticsService {
     return {
       generatedAt: new Date().toISOString(),
       issues,
-      checked: 10,
+      checked: 11,
       insufficient: {
         strategySample: Math.max(0, TH.MIN_SAMPLE_FOR_STRATEGY - closed.length),
         note: closed.length < TH.MIN_SAMPLE_FOR_STRATEGY ? `总样本 ${closed.length} 笔，策略结论需 ≥ ${TH.MIN_SAMPLE_FOR_STRATEGY} 笔` : null,

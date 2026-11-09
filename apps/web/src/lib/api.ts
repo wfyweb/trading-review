@@ -42,6 +42,7 @@ export interface Trade {
   exitPrice: string | null;
   quantity: string;
   margin: string | null;
+  marginMode: string | null;
   actualLeverage: string | null;
   plannedLeverage: string | null;
   initialStopPrice: string | null;
@@ -66,6 +67,10 @@ export interface Trade {
   reviewStatus: string;
   matchingStatus: string;
   feeUnconverted: boolean;
+  /** 是否发生过强制平仓（爆仓） */
+  isLiquidation: boolean;
+  liquidationCount: number;
+  liquidationAt: string | null;
   /** JSON 字符串：{"pct","usdt","r","at"}，K 线未算时为 null */
   mfe: string | null;
   mae: string | null;

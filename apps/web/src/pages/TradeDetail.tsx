@@ -161,6 +161,18 @@ export function TradeDetailPage({ id }: { id: string }) {
         </button>
       </div>
 
+      {trade.isLiquidation && (
+        <div className="banner danger">
+          <strong>这笔发生过强制平仓</strong>
+          <span className="vline" />
+          <span>
+            强平成交 {trade.liquidationCount} 笔
+            {trade.liquidationAt ? `，首次 ${dtFull(trade.liquidationAt)}` : ''}；净收益 {signed(trade.netPnl, 2)} U。
+            爆仓是杠杆与仓位结构问题，不是行情问题。
+          </span>
+        </div>
+      )}
+
       {missingStop && (
         <div className="banner">
           <strong>缺少开仓止损价</strong>
@@ -331,6 +343,7 @@ export function TradeDetailPage({ id }: { id: string }) {
               <Row label="名义仓位" value={`${num(Number(trade.entryPrice) * Number(trade.quantity), 2)} U`} />
               <Row label="保证金" value={trade.margin ? `${num(trade.margin, 2)} U` : '—'} />
               <Row label="实际杠杆" value={trade.actualLeverage ? `${num(trade.actualLeverage, 1)}×` : '—'} />
+              <Row label="保证金模式" value={trade.marginMode === 'crossed' ? '全仓' : trade.marginMode === 'isolated' ? '逐仓' : '—'} />
             </div>
           </div>
 

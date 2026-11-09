@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
 import { buildHeaders, RateLimiter, signRequest } from './signer';
-import { mapBill, mapFill, mapOrder } from './mapper';
-import type { AccountInfo, BitgetApi, FetchRange, Page, RawBill, RawFill, RawOrder } from './types';
+import { mapBill, mapFill, mapOrder, mapPosition } from './mapper';
+import type { AccountInfo, BitgetApi, FetchRange, Page, RawBill, RawFill, RawOrder, RawPosition } from './types';
 import { BitgetApiError } from './types';
 import { MOCK_BILLS, MOCK_FILLS, MOCK_ORDERS } from './mock-data';
 
@@ -93,6 +93,11 @@ export class MockBitgetClient implements BitgetApi {
   async orders(range: FetchRange): Promise<Page<RawOrder>> {
     const p = pageOf(MOCK_ORDERS, range, 'cTime');
     return { ...p, items: p.items.map((r: any) => ({ ...r, raw: r })) };
+  }
+
+  /** Mock 无持仓明细：宁可不给，也不编造杠杆和保证金 */
+  async positions(): Promise<Page<RawPosition>> {
+    return { items: [], hasMore: false };
   }
 }
 
@@ -290,6 +295,57 @@ export class LiveBitgetClient implements BitgetApi {
     const list: any[] = Array.isArray(d) ? d : (d.list ?? d.orderList ?? []);
     const cursor = d.cursor ? String(d.cursor) : undefined;
     return { items: list.map(mapOrder), hasMore: Boolean(cursor) && list.length >= 100, cursor };
+  }
+
+  // ---------- 持仓历史（杠杆 / 保证金 / 强平价） ----------
+
+  async positions(range: FetchRange): Promise<Page<RawPosition>> {
+    return this.isUta ? this.utaPositions(range) : this.classicPositions(range);
+  }
+
+  private async classicPositions(range: FetchRange): Promise<Page<RawPosition>> {
+    const q: Record<string, string> = {
+      productType: PRODUCT_TYPE,
+      startTime: String(range.startTime),
+      endTime: String(range.endTime),
+      limit: String(Math.min(range.limit ?? 100, 100)),
+    };
+    if (range.cursor) q.idLessThan = range.cursor;
+    try {
+      const res = await this.request('GET', '/api/v2/mix/position/history-position', q);
+      const d = res?.data ?? {};
+      const list: any[] = Array.isArray(d) ? d : (d.list ?? d.positionList ?? []);
+      const cursor = d.endId ? String(d.endId) : undefined;
+      return { items: list.map(mapPosition), hasMore: list.length >= 100 && Boolean(cursor), cursor };
+    } catch (e: any) {
+      // 持仓接口失败不能拖垮整次同步：杠杆/保证金退化为空，其余数据照常入库
+      this.logger.warn(`读取持仓历史失败（杠杆/保证金将缺失）：${e.message}`);
+      return { items: [], hasMore: false };
+    }
+  }
+
+  private async utaPositions(range: FetchRange): Promise<Page<RawPosition>> {
+    const q: Record<string, string> = {
+      category: PRODUCT_TYPE,
+      startTime: String(range.startTime),
+      endTime: String(range.endTime),
+      limit: String(Math.min(range.limit ?? 100, 100)),
+    };
+    if (range.cursor) q.cursor = range.cursor;
+    // 路径在 v3 中有单复数两种写法，逐个试；都失败也不影响主流程
+    for (const path of ['/api/v3/position/history-position', '/api/v3/position/history-positions']) {
+      try {
+        const res = await this.request('GET', path, q);
+        const d = res?.data ?? {};
+        const list: any[] = Array.isArray(d) ? d : (d.list ?? d.positionList ?? []);
+        const cursor = d.cursor ? String(d.cursor) : undefined;
+        return { items: list.map(mapPosition), hasMore: Boolean(cursor) && list.length >= 100, cursor };
+      } catch (e: any) {
+        this.logger.warn(`持仓历史接口 ${path} 失败：${e.message}`);
+      }
+    }
+    this.logger.warn('持仓历史读取失败，杠杆/保证金将留空');
+    return { items: [], hasMore: false };
   }
 
   // ---------- 资金流水 ----------

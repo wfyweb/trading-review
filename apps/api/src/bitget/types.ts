@@ -39,6 +39,30 @@ export interface RawOrder {
   raw: unknown;
 }
 
+/**
+ * 持仓历史。成交流水里没有杠杆和保证金，只能从这个接口拿。
+ * 字段名在 v2 / v3 之间有差异，取值一律走别名容错，取不到留 null。
+ */
+export interface RawPosition {
+  positionId: string;
+  symbol: string;
+  /** LONG | SHORT */
+  holdSide: string;
+  marginMode?: string | null;
+  leverage?: string | null;
+  marginSize?: string | null;
+  openAvgPrice?: string | null;
+  closeAvgPrice?: string | null;
+  totalQty?: string | null;
+  liquidatePrice?: string | null;
+  pnl?: string | null;
+  netProfit?: string | null;
+  totalFunding?: string | null;
+  cTime: number;
+  uTime: number;
+  raw: unknown;
+}
+
 export interface Page<T> {
   items: T[];
   hasMore: boolean;
@@ -68,6 +92,8 @@ export interface BitgetApi {
   fills(range: FetchRange): Promise<Page<RawFill>>;
   bills(range: FetchRange): Promise<Page<RawBill>>;
   orders(range: FetchRange): Promise<Page<RawOrder>>;
+  /** 持仓历史：用于补齐杠杆、保证金、强平价 */
+  positions(range: FetchRange): Promise<Page<RawPosition>>;
 }
 
 export class BitgetApiError extends Error {

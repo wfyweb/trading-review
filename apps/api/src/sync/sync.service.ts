@@ -12,7 +12,7 @@ import {
   proxyUrl,
   type AccountMode,
 } from '../bitget/client';
-import { isFundingBill, isTransferBill } from '../bitget/mapper';
+import { isFundingBill, isLiquidationFill, isTransferBill } from '../bitget/mapper';
 import type { BitgetApi, FetchRange } from '../bitget/types';
 import { MatchingService } from '../matching/matching.service';
 
@@ -271,12 +271,21 @@ export class SyncService {
 
       const fills = await this.fetchAll(client, 'fills', window, log);
       let insertedFills = 0;
+      let liqBackfilled = 0;
       for (const f of fills) {
         const id = f.tradeId || `${f.symbol}-${f.cTime}-${f.price}-${f.baseVolume}`;
+        const isLiq = isLiquidationFill(f.raw);
         const exists = await this.prisma.fill.findUnique({
           where: { accountId_exchangeFillId: { accountId: acc.id, exchangeFillId: id } },
         });
-        if (exists) continue;
+        if (exists) {
+          // 历史数据补标：以前版本没解析爆仓，重同步时顺手修好
+          if (isLiq && !exists.isLiquidation) {
+            await this.prisma.fill.update({ where: { id: exists.id }, data: { isLiquidation: true } });
+            liqBackfilled++;
+          }
+          continue;
+        }
         await this.prisma.fill.create({
           data: {
             accountId: acc.id,
@@ -289,13 +298,20 @@ export class SyncService {
             fee: f.feeCoin === 'USDT' ? f.fee || '0' : '0',
             feeCoin: f.feeCoin,
             execPnl: f.execPnl,
+            isLiquidation: isLiq,
             filledAt: new Date(f.cTime),
             rawPayload: JSON.stringify(f.raw),
           },
         });
         insertedFills++;
       }
-      log(`成交 ${fills.length} 条，新增 ${insertedFills} 条，去重 ${fills.length - insertedFills} 条`);
+      const liqCount = fills.filter((f) => isLiquidationFill(f.raw)).length;
+      log(
+        `成交 ${fills.length} 条，新增 ${insertedFills} 条，去重 ${fills.length - insertedFills} 条` +
+          (liqCount > 0 ? `，其中强平成交 ${liqCount} 条` : '') +
+          (liqBackfilled > 0 ? `（历史补标 ${liqBackfilled} 条）` : ''),
+        liqCount > 0 ? 'warn' : 'info',
+      );
 
       const orders = await this.fetchAll(client, 'orders', window, log);
       let insertedOrders = 0;
@@ -355,6 +371,50 @@ export class SyncService {
       }
       log(`流水 ${bills.length} 条，新增 ${insertedBills} 条`);
 
+      // 持仓历史：杠杆 / 保证金 / 强平价只能从这里拿
+      let insertedPositions = 0;
+      try {
+        const positions = await this.fetchAll(client, 'positions', window, log);
+        for (const p of positions) {
+          if (!p.symbol) continue;
+          const pid = p.positionId || `${p.symbol}-${p.cTime}`;
+          await this.prisma.position.upsert({
+            where: { accountId_positionId: { accountId: acc.id, positionId: pid } },
+            create: {
+              accountId: acc.id,
+              positionId: pid,
+              symbol: p.symbol,
+              holdSide: p.holdSide,
+              marginMode: p.marginMode ?? null,
+              leverage: p.leverage ?? null,
+              marginSize: p.marginSize ?? null,
+              openAvgPrice: p.openAvgPrice ?? null,
+              closeAvgPrice: p.closeAvgPrice ?? null,
+              totalQty: p.totalQty ?? null,
+              liquidatePrice: p.liquidatePrice ?? null,
+              pnl: p.pnl ?? null,
+              netProfit: p.netProfit ?? null,
+              totalFunding: p.totalFunding ?? null,
+              openTime: new Date(p.cTime || Date.now()),
+              closeTime: p.uTime ? new Date(p.uTime) : null,
+              rawPayload: JSON.stringify(p.raw),
+            },
+            update: {
+              leverage: p.leverage ?? null,
+              marginSize: p.marginSize ?? null,
+              marginMode: p.marginMode ?? null,
+              liquidatePrice: p.liquidatePrice ?? null,
+              closeTime: p.uTime ? new Date(p.uTime) : null,
+              rawPayload: JSON.stringify(p.raw),
+            },
+          });
+          insertedPositions++;
+        }
+        log(`持仓历史 ${positions.length} 条，写入 ${insertedPositions} 条（用于回填杠杆与保证金）`);
+      } catch (e: any) {
+        log(`持仓历史读取失败，杠杆/保证金将留空：${e.message}`, 'warn');
+      }
+
       const matchResult = await this.matching.rebuild(acc.id);
       log(
         `配对完成：平仓 ${matchResult.closed} 笔，持仓中 ${matchResult.open} 笔，恢复历史复盘 ${matchResult.preservedReviews} 笔`,
@@ -366,7 +426,7 @@ export class SyncService {
         ordersCount: orders.length,
         fillsCount: fills.length,
         ledgerCount: bills.length,
-        insertedCount: insertedFills + insertedOrders + insertedBills,
+        insertedCount: insertedFills + insertedOrders + insertedBills + insertedPositions,
       });
 
       return this.getJob(job.id);
@@ -389,7 +449,7 @@ export class SyncService {
    */
   private async fetchAll(
     client: BitgetApi,
-    kind: 'fills' | 'orders' | 'bills',
+    kind: 'fills' | 'orders' | 'bills' | 'positions',
     window: FetchRange,
     log: (m: string, l?: LogLevel) => void,
   ): Promise<any[]> {

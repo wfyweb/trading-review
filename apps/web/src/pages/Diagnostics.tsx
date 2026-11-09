@@ -23,6 +23,7 @@ const RULE_NAMES: Record<string, string> = {
   R8: '利润集中',
   R9: '方向失衡',
   R10: '手续费吞毛利',
+  R11: '强制平仓',
 };
 
 export function DiagnosticsPage({ filters }: { filters: Filters }) {
@@ -334,6 +335,7 @@ function ruleText(code: string): string {
     R8: '最好的 5% 交易贡献 > 80% 的利润 → 结果是行情给的，不是策略稳定产出的',
     R9: '单方向占比 > 65% 且该方向净收益 < 0 → 方向偏好正在拖累你',
     R10: '手续费 / |毛收益| > 50% → 毛利被成本吃掉一半以上',
+    R11: '近 30 天强制平仓 ≥ 2 次 → 杠杆与仓位结构撑不住正常波动',
   };
   return map[code] ?? '';
 }

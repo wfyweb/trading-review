@@ -154,6 +154,8 @@ export function TradesPage({ filters }: { filters: Filters }) {
                   <th>开仓时间</th>
                   <th>交易对</th>
                   <th>方向</th>
+                  <th className="num">杠杆</th>
+                  <th className="num">保证金</th>
                   <th>策略</th>
                   <th className="num">入场 / 出场</th>
                   <th className="num">净收益</th>
@@ -171,6 +173,17 @@ export function TradesPage({ filters }: { filters: Filters }) {
                     <td>{t.symbol.replace('USDT', '')}<span className="muted" style={{ fontSize: 10 }}>/USDT</span></td>
                     <td>
                       <span className={`chip ${t.direction === 'LONG' ? 'long' : 'short'}`}>{t.direction === 'LONG' ? '多' : '空'}</span>
+                      {t.isLiquidation && (
+                        <span className="chip danger" style={{ marginLeft: 4 }} title={`强平成交 ${t.liquidationCount} 笔`}>
+                          爆仓
+                        </span>
+                      )}
+                    </td>
+                    <td className="num dim" style={{ fontSize: 11.5 }}>
+                      {t.actualLeverage ? `${num(t.actualLeverage, 0)}×` : '—'}
+                    </td>
+                    <td className="num dim" style={{ fontSize: 11.5 }}>
+                      {t.margin ? `${num(t.margin, 2)}` : '—'}
                     </td>
                     <td className="dim" style={{ fontSize: 11.5 }}>{t.strategy?.name ?? '—'}</td>
                     <td className="num" style={{ fontSize: 11.5 }}>
