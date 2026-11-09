@@ -323,11 +323,12 @@ export const api = {
 
   trade: (id: string) => req<Trade>(`/trades/${id}`),
 
-  saveReview: (id: string, body: Record<string, unknown>) =>
-    req<{ review: Review }>(`/trades/${id}/review`, { method: 'PUT', body: JSON.stringify(body) }),
-
+  /** 局部更新（补止损价、改止盈价等） */
   updateTrade: (id: string, body: Record<string, unknown>) =>
     req<Trade>(`/trades/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  saveReview: (id: string, body: Record<string, unknown>) =>
+    req<{ review: Review }>(`/trades/${id}/review`, { method: 'PUT', body: JSON.stringify(body) }),
 
   overview: (f: Filters = {}) => req<Overview>(`/analytics/overview${qs(f)}`),
 

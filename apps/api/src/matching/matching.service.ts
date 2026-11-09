@@ -524,4 +524,55 @@ export class MatchingService {
     this.logger.log(`离场方式判定：${updated} 笔`);
     return { updated };
   }
+
+  /**
+   * 持仓期间捕获止盈止损：把「未完成委托」里的持仓止损/止盈计划单落到 OPEN 交易上。
+   *
+   * 为什么只能这么做：你习惯开单后再设止损，而这个止损一旦触发或撤销，
+   * 交易所就不再保留它的触发价（UTA 无历史计划委托接口）。
+   * 所以只有「持有期间同步过一次」才抓得到——抓到即为真实触发价。
+   */
+  async applyPendingStops(
+    accountId: string,
+    pending: { symbol: string; holdSide?: string | null; planType?: string | null; delegateType?: string | null; triggerPrice?: string | null }[],
+  ) {
+    const planLike = pending.filter(
+      (p) =>
+        p.triggerPrice &&
+        (String(p.planType ?? '').toLowerCase().includes('profit_loss') ||
+          String(p.delegateType ?? '').toLowerCase().includes('pos_loss') ||
+          String(p.delegateType ?? '').toLowerCase().includes('pos_profit')),
+    );
+    if (planLike.length === 0) return { captured: 0, pending: pending.length };
+
+    const openTrades = await this.prisma.trade.findMany({ where: { accountId, status: 'OPEN' } });
+    let captured = 0;
+
+    for (const t of openTrades) {
+      const mine = planLike.filter(
+        (p) => p.symbol === t.symbol && (!p.holdSide || String(p.holdSide).toUpperCase() === t.direction),
+      );
+      if (mine.length === 0) continue;
+
+      const isProfit = (p: (typeof planLike)[number]) =>
+        String(p.delegateType ?? '').toLowerCase().includes('profit') ||
+        String(p.planType ?? '').toLowerCase().includes('profit');
+      const stop = mine.find((p) => !isProfit(p))?.triggerPrice ?? null;
+      const take = mine.find(isProfit)?.triggerPrice ?? null;
+
+      if (!stop && !take) continue;
+      const risk = stop ? calcRiskAmount(t.entryPrice, stop, t.quantity) : t.riskAmount;
+      await this.prisma.trade.update({
+        where: { id: t.id },
+        data: {
+          ...(stop && !t.initialStopPrice ? { initialStopPrice: stop, riskAmount: risk } : {}),
+          ...(take && !t.takeProfitPrice ? { takeProfitPrice: take } : {}),
+        },
+      });
+      captured++;
+    }
+
+    if (captured > 0) this.logger.log(`持仓期止损快照：${captured} 笔 OPEN 交易补上止损/止盈`);
+    return { captured, pending: pending.length };
+  }
 }

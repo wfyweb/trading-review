@@ -33,6 +33,8 @@ export function TradeDetailPage({ id }: { id: string }) {
   const [calculating, setCalculating] = useState(false);
   const [score, setScore] = useState<ScoreResult | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [stopDraft, setStopDraft] = useState('');
+  const [savingStop, setSavingStop] = useState(false);
 
   const refreshScore = () => api.scoreSuggest(id).then(setScore).catch(() => {});
   useEffect(() => {
@@ -88,6 +90,22 @@ export function TradeDetailPage({ id }: { id: string }) {
       alert(`重算失败：${e.message}`);
     } finally {
       setCalculating(false);
+    }
+  };
+
+  /** 补录止损价：保存后后端会重算 riskAmount 与 R */
+  const saveStop = async () => {
+    const v = stopDraft.trim();
+    if (!v || Number.isNaN(Number(v))) return;
+    setSavingStop(true);
+    try {
+      const t = await api.updateTrade(id, { initialStopPrice: v });
+      setTrade(t);
+      refreshScore();
+    } catch (e: any) {
+      alert(`保存失败：${e.message}`);
+    } finally {
+      setSavingStop(false);
     }
   };
 
@@ -452,7 +470,25 @@ export function TradeDetailPage({ id }: { id: string }) {
               <span className="hint">{trade.candleStatus === 'OK' ? 'K 线已算' : trade.candleStatus === 'PARTIAL' ? 'K 线不完整' : trade.candleStatus === 'NO_DATA' ? '无 K 线' : '未算 K 线'}</span>
             </div>
             <div className="card-bd" style={{ paddingTop: 6 }}>
-              <Row label="开仓止损价" value={trade.initialStopPrice ? num(trade.initialStopPrice, priceDp(trade.initialStopPrice)) : '未记录'} cls={missingStop ? 'warn' : ''} />
+              {trade.initialStopPrice ? (
+                <Row label="开仓止损价" value={num(trade.initialStopPrice, priceDp(trade.initialStopPrice))} />
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0' }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>开仓止损价</span>
+                  <div className="spacer" />
+                  <input
+                    className="input"
+                    style={{ width: 96, height: 26, fontSize: 11 }}
+                    placeholder="补录止损价"
+                    value={stopDraft}
+                    onChange={(e) => setStopDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && saveStop()}
+                  />
+                  <button className="btn ghost" style={{ fontSize: 10.5, padding: '2px 8px' }} disabled={savingStop} onClick={saveStop}>
+                    {savingStop ? '…' : '保存'}
+                  </button>
+                </div>
+              )}
               <Row label="计划风险金额" value={trade.riskAmount ? `${num(trade.riskAmount, 3)} U` : '—'} />
               <Row label="R 倍数" value={trade.rMultiple ? num(trade.rMultiple, 2) : '不可计算'} />
               <Row

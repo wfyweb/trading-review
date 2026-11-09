@@ -465,10 +465,24 @@ export class SyncService {
         log(`当前持仓读取失败：${e.message}`, 'warn');
       }
 
+      // 未完成委托：持仓期间挂着的止盈止损计划单（历史查不到，只能趁持仓时抓）
+      let pendingOrders: Awaited<ReturnType<typeof client.unfilledOrders>> = [];
+      try {
+        pendingOrders = await client.unfilledOrders();
+        log(`未完成委托 ${pendingOrders.length} 条${pendingOrders.length > 0 ? '（含持仓止盈止损计划单）' : ''}`);
+      } catch (e: any) {
+        log(`未完成委托读取失败：${e.message}`, 'warn');
+      }
+
       const matchResult = await this.matching.rebuild(acc.id);
       log(
         `配对完成：平仓 ${matchResult.closed} 笔，持仓中 ${matchResult.open} 笔，恢复历史复盘 ${matchResult.preservedReviews} 笔`,
       );
+
+      if (pendingOrders.length > 0) {
+        const cap = await this.matching.applyPendingStops(acc.id, pendingOrders);
+        if (cap.captured > 0) log(`持仓期止损快照：${cap.captured} 笔已补上止损价`);
+      }
 
       // 权益杠杆：交易所不给历史杠杆，用「名义 / 开仓时权益」估算，交易所真值优先
       try {

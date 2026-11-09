@@ -63,6 +63,19 @@ export interface RawPosition {
   raw: unknown;
 }
 
+/** 未完成委托（含持仓止盈止损计划单） */
+export interface RawPendingOrder {
+  orderId?: string;
+  symbol: string;
+  holdSide?: string | null;
+  planType?: string | null;
+  delegateType?: string | null;
+  triggerPrice?: string | null;
+  price?: string | null;
+  qty?: string | null;
+  raw: unknown;
+}
+
 export interface Page<T> {
   items: T[];
   hasMore: boolean;
@@ -96,6 +109,8 @@ export interface BitgetApi {
   positions(range: FetchRange): Promise<Page<RawPosition>>;
   /** 当前持仓：UTA 里唯一带 leverage / marginSize 的接口，用于未平仓交易 */
   currentPositions(): Promise<RawPosition[]>;
+  /** 当前未完成委托：持仓期间挂着的止盈止损计划单会出现在这里（历史查不到） */
+  unfilledOrders(): Promise<RawPendingOrder[]>;
 }
 
 export class BitgetApiError extends Error {

@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
 import { buildHeaders, RateLimiter, signRequest } from './signer';
 import { mapBill, mapFill, mapOrder, mapPosition } from './mapper';
-import type { AccountInfo, BitgetApi, FetchRange, Page, RawBill, RawFill, RawOrder, RawPosition } from './types';
+import type { AccountInfo, BitgetApi, FetchRange, Page, RawBill, RawFill, RawOrder, RawPendingOrder, RawPosition } from './types';
 import { BitgetApiError } from './types';
 import { MOCK_BILLS, MOCK_FILLS, MOCK_ORDERS } from './mock-data';
 
@@ -101,6 +101,10 @@ export class MockBitgetClient implements BitgetApi {
   }
 
   async currentPositions(): Promise<RawPosition[]> {
+    return [];
+  }
+
+  async unfilledOrders(): Promise<RawPendingOrder[]> {
     return [];
   }
 }
@@ -370,6 +374,38 @@ export class LiveBitgetClient implements BitgetApi {
       return list.map(mapPosition);
     } catch (e: any) {
       this.logger.warn(`读取当前持仓失败（未平仓交易的杠杆/保证金将缺失）：${e.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 未完成委托。
+   * 你在持仓上设置的止盈止损，只要还没触发，就会以"计划单"的形式挂在这里；
+   * 一旦触发或被撤销就查不到了（UTA 没有历史计划委托接口）。
+   * 所以只有「持仓期间同步过」才能捕获到触发价。
+   */
+  async unfilledOrders(): Promise<RawPendingOrder[]> {
+    try {
+      const path = this.isUta ? '/api/v3/trade/unfilled-orders' : '/api/v2/mix/order/orders-plan-pending';
+      const q: Record<string, string> = this.isUta
+        ? { category: PRODUCT_TYPE, limit: '100' }
+        : { productType: PRODUCT_TYPE, limit: '100' };
+      const res = await this.request('GET', path, q);
+      const d = res?.data ?? {};
+      const list: any[] = Array.isArray(d) ? d : (d.list ?? d.entrustList ?? d.orders ?? []);
+      return list.map((raw: any) => ({
+        orderId: raw?.orderId ? String(raw.orderId) : undefined,
+        symbol: String(raw?.symbol ?? ''),
+        holdSide: raw?.posSide ?? raw?.holdSide ?? null,
+        planType: raw?.planType ?? null,
+        delegateType: raw?.delegateType ?? null,
+        triggerPrice: raw?.triggerPrice ?? raw?.stopSurplusTriggerPrice ?? raw?.stopLossTriggerPrice ?? null,
+        price: raw?.price ?? raw?.executePrice ?? null,
+        qty: raw?.size ?? raw?.qty ?? null,
+        raw,
+      }));
+    } catch (e: any) {
+      this.logger.warn(`读取未完成委托失败：${e.message}`);
       return [];
     }
   }
