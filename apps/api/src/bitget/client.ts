@@ -99,6 +99,10 @@ export class MockBitgetClient implements BitgetApi {
   async positions(): Promise<Page<RawPosition>> {
     return { items: [], hasMore: false };
   }
+
+  async currentPositions(): Promise<RawPosition[]> {
+    return [];
+  }
 }
 
 /**
@@ -346,6 +350,28 @@ export class LiveBitgetClient implements BitgetApi {
     }
     this.logger.warn('持仓历史读取失败，杠杆/保证金将留空');
     return { items: [], hasMore: false };
+  }
+
+  /**
+   * 当前持仓。UTA 里只有这个接口返回 leverage / marginSize，
+   * 历史持仓接口不含这两个字段（实测），所以未平仓交易靠它补。
+   */
+  async currentPositions(): Promise<RawPosition[]> {
+    try {
+      if (this.isUta) {
+        const res = await this.request('GET', '/api/v3/position/current-position', { category: PRODUCT_TYPE });
+        const d = res?.data ?? {};
+        const list: any[] = Array.isArray(d) ? d : (d.list ?? []);
+        return list.map(mapPosition);
+      }
+      const res = await this.request('GET', '/api/v2/mix/position/allPosition', { productType: PRODUCT_TYPE });
+      const d = res?.data ?? {};
+      const list: any[] = Array.isArray(d) ? d : (d.holding ?? d.list ?? []);
+      return list.map(mapPosition);
+    } catch (e: any) {
+      this.logger.warn(`读取当前持仓失败（未平仓交易的杠杆/保证金将缺失）：${e.message}`);
+      return [];
+    }
   }
 
   // ---------- 资金流水 ----------

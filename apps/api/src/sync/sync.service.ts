@@ -415,6 +415,48 @@ export class SyncService {
         log(`持仓历史读取失败，杠杆/保证金将留空：${e.message}`, 'warn');
       }
 
+      // 当前持仓：UTA 里唯一带 leverage / marginSize 的接口
+      try {
+        const holding = await client.currentPositions();
+        for (const p of holding) {
+          if (!p.symbol) continue;
+          const pid = p.positionId || `${p.symbol}-${p.holdSide}-open`;
+          await this.prisma.position.upsert({
+            where: { accountId_positionId: { accountId: acc.id, positionId: pid } },
+            create: {
+              accountId: acc.id,
+              positionId: pid,
+              symbol: p.symbol,
+              holdSide: p.holdSide,
+              marginMode: p.marginMode ?? null,
+              leverage: p.leverage ?? null,
+              marginSize: p.marginSize ?? null,
+              openAvgPrice: p.openAvgPrice ?? null,
+              closeAvgPrice: p.closeAvgPrice ?? null,
+              totalQty: p.totalQty ?? null,
+              liquidatePrice: p.liquidatePrice ?? null,
+              pnl: p.pnl ?? null,
+              netProfit: p.netProfit ?? null,
+              totalFunding: p.totalFunding ?? null,
+              openTime: new Date(p.cTime || Date.now()),
+              closeTime: null,
+              rawPayload: JSON.stringify(p.raw),
+            },
+            update: {
+              leverage: p.leverage ?? null,
+              marginSize: p.marginSize ?? null,
+              marginMode: p.marginMode ?? null,
+              liquidatePrice: p.liquidatePrice ?? null,
+              totalQty: p.totalQty ?? null,
+              rawPayload: JSON.stringify(p.raw),
+            },
+          });
+        }
+        log(`当前持仓 ${holding.length} 条${holding.length > 0 ? '，已同步杠杆/保证金' : '（无未平仓，历史单的杠杆/保证金交易所不提供）'}`);
+      } catch (e: any) {
+        log(`当前持仓读取失败：${e.message}`, 'warn');
+      }
+
       const matchResult = await this.matching.rebuild(acc.id);
       log(
         `配对完成：平仓 ${matchResult.closed} 笔，持仓中 ${matchResult.open} 笔，恢复历史复盘 ${matchResult.preservedReviews} 笔`,

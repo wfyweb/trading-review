@@ -67,13 +67,15 @@ export class MatchingService {
       where: { accountId, matchingStatus: { not: 'MANUAL_MATCHED' } },
       include: { review: true, tags: true },
     });
-    const preserved = new Map<string, { review: any; tagIds: string[]; score: number | null }>();
+    const preserved = new Map<string, { review: any; tagIds: string[]; score: number | null; scoreSource: string; scoreDetail: string | null }>();
     for (const t of olds) {
       if (t.review || t.tags.length || t.executionScore !== null) {
         preserved.set(`${t.symbol}|${new Date(t.entryTime).toISOString()}`, {
           review: t.review,
           tagIds: t.tags.map((x) => x.tagId),
           score: t.executionScore,
+          scoreSource: t.scoreSource,
+          scoreDetail: t.scoreDetail,
         });
       }
     }
@@ -135,6 +137,8 @@ export class MatchingService {
             liquidationAt: s.liqAt,
             reviewStatus: keep?.review ? 'DONE' : 'PENDING',
             executionScore: keep?.score ?? null,
+            scoreSource: keep?.scoreSource ?? 'NONE',
+            scoreDetail: keep?.scoreDetail ?? null,
             tags: keep?.tagIds?.length ? { create: keep.tagIds.map((tagId) => ({ tagId })) } : undefined,
             review: keep?.review
               ? {

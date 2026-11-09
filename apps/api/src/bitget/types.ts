@@ -92,8 +92,10 @@ export interface BitgetApi {
   fills(range: FetchRange): Promise<Page<RawFill>>;
   bills(range: FetchRange): Promise<Page<RawBill>>;
   orders(range: FetchRange): Promise<Page<RawOrder>>;
-  /** 持仓历史：用于补齐杠杆、保证金、强平价 */
+  /** 持仓历史：用于补齐杠杆、保证金、强平价（UTA 历史接口不返回 leverage/marginSize） */
   positions(range: FetchRange): Promise<Page<RawPosition>>;
+  /** 当前持仓：UTA 里唯一带 leverage / marginSize 的接口，用于未平仓交易 */
+  currentPositions(): Promise<RawPosition[]>;
 }
 
 export class BitgetApiError extends Error {

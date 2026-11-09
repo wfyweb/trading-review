@@ -344,6 +344,11 @@ export function TradeDetailPage({ id }: { id: string }) {
               <Row label="保证金" value={trade.margin ? `${num(trade.margin, 2)} U` : '—'} />
               <Row label="实际杠杆" value={trade.actualLeverage ? `${num(trade.actualLeverage, 1)}×` : '—'} />
               <Row label="保证金模式" value={trade.marginMode === 'crossed' ? '全仓' : trade.marginMode === 'isolated' ? '逐仓' : '—'} />
+              {!trade.actualLeverage && (
+                <div className="muted" style={{ fontSize: 10, lineHeight: 1.6, marginTop: 4 }}>
+                  杠杆与保证金未取到：Bitget 统一账户的历史成交/订单/持仓接口都不返回这两个字段，只有当前持仓接口有。
+                </div>
+              )}
             </div>
           </div>
 
