@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { D, key } from '../common/money';
+import { D, key, calcRiskAmount } from '../common/money';
 
 type Dir = 'LONG' | 'SHORT';
 
@@ -275,6 +275,8 @@ export class MatchingService {
 
     await this.attributeFunding(accountId);
     await this.enrichFromPositions(accountId);
+    await this.enrichStops(accountId);
+    await this.enrichExitType(accountId);
 
     const needsReview = 0;
     this.logger.log(
@@ -378,5 +380,148 @@ export class MatchingService {
     }
 
     if (filled > 0) this.logger.log(`持仓回填：${filled} 笔补上杠杆/保证金`);
+  }
+
+  /**
+   * 从开仓订单里提取止损 / 止盈。
+   *
+   * Bitget 的订单历史带 stopLoss / takeProfit 字段——只在你"下单时就附带止盈止损"时才有值。
+   * 事后在持仓上单独设置的止盈止损，统一账户没有任何接口能查到（v2 计划委托接口对 UTA 直接 40085，
+   * v3 无对应历史接口），所以这类单子仍然拿不到，只能手工补。
+   *
+   * 只填当前为空的，不覆盖人工填写的值。
+   */
+  async enrichStops(accountId: string) {
+    const trades = await this.prisma.trade.findMany({
+      where: { accountId, initialStopPrice: null },
+      include: { fills: { include: { fill: true } } },
+    });
+    if (trades.length === 0) return { filled: 0, checked: 0 };
+
+    const orderIds = Array.from(
+      new Set(
+        trades
+          .flatMap((t) => t.fills.filter((tf) => tf.role === 'ENTRY').map((tf) => tf.fill.orderId))
+          .filter((x): x is string => Boolean(x)),
+      ),
+    );
+    const orders = await this.prisma.order.findMany({ where: { accountId, exchangeOrderId: { in: orderIds } } });
+    const byId = new Map(orders.map((o) => [o.exchangeOrderId, o]));
+
+    let filled = 0;
+    for (const t of trades) {
+      const entryFills = t.fills
+        .filter((tf) => tf.role === 'ENTRY')
+        .sort((a, b) => a.fill.filledAt.getTime() - b.fill.filledAt.getTime());
+
+      let stop: string | null = null;
+      let takeProfit: string | null = null;
+      for (const tf of entryFills) {
+        const order = tf.fill.orderId ? byId.get(tf.fill.orderId) : undefined;
+        if (!order) continue;
+        try {
+          const raw = JSON.parse(order.rawPayload ?? '{}');
+          const sl = raw?.stopLoss;
+          const tp = raw?.takeProfit;
+          if (!stop && sl !== null && sl !== undefined && String(sl) !== '' && String(sl) !== '0') stop = String(sl);
+          if (!takeProfit && tp !== null && tp !== undefined && String(tp) !== '' && String(tp) !== '0') takeProfit = String(tp);
+        } catch {
+          // 原始报文异常不影响主流程
+        }
+        if (stop) break;
+      }
+      if (!stop) continue;
+
+      const risk = calcRiskAmount(t.entryPrice, stop, t.quantity);
+      const rMultiple = risk && D(risk).greaterThan(0) ? key(D(t.netPnl).div(D(risk)), 4) : null;
+      await this.prisma.trade.update({
+        where: { id: t.id },
+        data: {
+          initialStopPrice: stop,
+          takeProfitPrice: takeProfit ?? t.takeProfitPrice,
+          riskAmount: risk,
+          rMultiple,
+          rMultipleSource: risk ? 'PLANNED_STOP' : 'NONE',
+        },
+      });
+      filled++;
+    }
+
+    if (filled > 0) this.logger.log(`止损回填：${filled} 笔从开仓订单取到止损价并重算 R`);
+    return { filled, checked: trades.length };
+  }
+
+  /**
+   * 判定每笔交易的离场方式。
+   *
+   * Bitget 平仓单的 delegateType 会写明是谁平的仓：
+   *   pos_loss_market   → 持仓止损被触发（你在持仓上设的止损打出去了）
+   *   pos_profit_market → 持仓止盈被触发
+   *   reverse           → 反手
+   *   normal / market   → 手动平仓
+   * 强平另由 isLiquidation 标记，优先级最高。
+   *
+   * 注意：这里拿到的是「触发止损时的成交价」，不是「你当初设的止损价」——
+   * 交易所不保存计划委托的触发价（UTA 无历史计划委托接口），所以不会拿它去当 initialStopPrice，
+   * 否则 R 倍数会被算成恒等于 ±1，毫无意义。
+   */
+  async enrichExitType(accountId: string) {
+    const trades = await this.prisma.trade.findMany({
+      where: { accountId, status: 'CLOSED' },
+      include: { fills: { include: { fill: true } } },
+    });
+    if (trades.length === 0) return { updated: 0 };
+
+    const orderIds = Array.from(
+      new Set(
+        trades
+          .flatMap((t) => t.fills.filter((tf) => tf.role === 'EXIT').map((tf) => tf.fill.orderId))
+          .filter((x): x is string => Boolean(x)),
+      ),
+    );
+    const orders = await this.prisma.order.findMany({ where: { accountId, exchangeOrderId: { in: orderIds } } });
+    const byId = new Map(orders.map((o) => [o.exchangeOrderId, o]));
+
+    const labelOf = (delegate: string | null | undefined): string => {
+      switch (String(delegate ?? '').toLowerCase()) {
+        case 'pos_loss_market':
+          return 'STOP_LOSS';
+        case 'pos_profit_market':
+          return 'TAKE_PROFIT';
+        case 'reverse':
+          return 'REVERSE';
+        default:
+          return 'MANUAL';
+      }
+    };
+
+    let updated = 0;
+    for (const t of trades) {
+      // 反向成交可能拆成两笔交易：只看真正属于离场的那部分
+      const exitFills = t.fills
+        .filter((tf) => tf.role === 'EXIT')
+        .sort((a, b) => a.fill.filledAt.getTime() - b.fill.filledAt.getTime());
+
+      let exitType: string | null = null;
+      for (const tf of exitFills) {
+        const order = tf.fill.orderId ? byId.get(tf.fill.orderId) : undefined;
+        const delegate = order ? (JSON.parse(order.rawPayload ?? '{}')?.delegateType as string | undefined) : undefined;
+        const label = labelOf(delegate);
+        // 一笔交易可能分批平仓：只要有一次是止损/止盈触发，就按触发算
+        if (label !== 'MANUAL') {
+          exitType = label;
+          break;
+        }
+      }
+      if (!exitType && exitFills.length > 0) exitType = 'MANUAL';
+      if (t.isLiquidation) exitType = 'LIQUIDATION';
+      if (!exitType) continue;
+
+      await this.prisma.trade.update({ where: { id: t.id }, data: { exitType } });
+      updated++;
+    }
+
+    this.logger.log(`离场方式判定：${updated} 笔`);
+    return { updated };
   }
 }

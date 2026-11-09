@@ -339,6 +339,7 @@ export function TradeDetailPage({ id }: { id: string }) {
               <div style={{ height: 8 }} />
               <Row label="入场均价" value={num(trade.entryPrice, priceDp(trade.entryPrice))} />
               <Row label="出场均价" value={trade.exitPrice ? num(trade.exitPrice, 4) : '持仓中'} />
+              <Row label="离场方式" value={EXIT_TYPE[trade.exitType ?? ''] ?? '—'} />
               <Row label="数量" value={num(trade.quantity, qtyDp(trade.quantity))} />
               <Row label="名义仓位" value={`${num(Number(trade.entryPrice) * Number(trade.quantity), 2)} U`} />
               <Row
@@ -624,6 +625,14 @@ function scoreColor(score: number | null): string {
   if (score >= 50) return '#b08d57';
   return '#a05b52';
 }
+
+const EXIT_TYPE: Record<string, string> = {
+  STOP_LOSS: '止损触发',
+  TAKE_PROFIT: '止盈触发',
+  LIQUIDATION: '强制平仓',
+  REVERSE: '反手',
+  MANUAL: '手动平仓',
+};
 
 /** MFE/MAE 在库里是 JSON 字符串，解析失败就当未计算（不用 0 顶替） */
 function parseExtremum(raw: string | null): { pct: string; usdt: string; r: string | null; at: string } | null {

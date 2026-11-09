@@ -75,6 +75,8 @@ export interface Trade {
   isLiquidation: boolean;
   liquidationCount: number;
   liquidationAt: string | null;
+  /** STOP_LOSS | TAKE_PROFIT | LIQUIDATION | REVERSE | MANUAL */
+  exitType: 'STOP_LOSS' | 'TAKE_PROFIT' | 'LIQUIDATION' | 'REVERSE' | 'MANUAL' | null;
   /** JSON 字符串：{"pct","usdt","r","at"}，K 线未算时为 null */
   mfe: string | null;
   mae: string | null;

@@ -281,10 +281,15 @@ export class SyncService {
           where: { accountId_exchangeFillId: { accountId: acc.id, exchangeFillId: id } },
         });
         if (exists) {
-          // 历史数据补标：以前版本没解析爆仓，重同步时顺手修好
+          // 历史数据自愈：以前版本没存 orderId、没解析爆仓，重同步时顺手补上
+          const patch: Record<string, any> = {};
           if (isLiq && !exists.isLiquidation) {
-            await this.prisma.fill.update({ where: { id: exists.id }, data: { isLiquidation: true } });
+            patch.isLiquidation = true;
             liqBackfilled++;
+          }
+          if (!exists.orderId && f.orderId) patch.orderId = String(f.orderId);
+          if (Object.keys(patch).length > 0) {
+            await this.prisma.fill.update({ where: { id: exists.id }, data: patch });
           }
           continue;
         }
@@ -292,6 +297,7 @@ export class SyncService {
           data: {
             accountId: acc.id,
             exchangeFillId: id,
+            orderId: f.orderId ? String(f.orderId) : null,
             symbol: f.symbol,
             side: f.side.toUpperCase(),
             positionSide: f.positionSide ?? 'BOTH',
@@ -556,6 +562,14 @@ export class SyncService {
    * 清空同步数据（不动人工录入的交易与复盘）。
    * 用途：重新同步前清场、或试跑 Mock 数据后还原。
    */
+  /** 手动触发：回填止损价/离场方式（幂等，只填空值） */
+  async backfillStops() {
+    const acc = await this.accounts.ensureDefault();
+    const stops = await this.matching.enrichStops(acc.id);
+    const exit = await this.matching.enrichExitType(acc.id);
+    return { ...stops, exitTypeUpdated: exit.updated };
+  }
+
   async resetSyncData() {
     const acc = await this.accounts.ensureDefault();
     const deletedTrades = await this.prisma.trade.deleteMany({

@@ -277,7 +277,7 @@ export class TradesService {
     const holdingMin = (t: any) => (t.holdingSeconds === null ? null : Math.round(t.holdingSeconds / 60));
 
     const headers = [
-      '开仓时间', '平仓时间', '交易对', '方向', '状态', '爆仓',
+      '开仓时间', '平仓时间', '交易对', '方向', '状态', '爆仓', '离场方式',
       '开仓价', '平仓价', '数量', '杠杆', '保证金', '杠杆来源', '开仓时权益', '初始止损',
       '毛收益', '手续费', '资金费率', '净收益', 'R倍数',
       '持仓(分钟)', '策略', '行情环境', '形态', '标签',
@@ -291,6 +291,7 @@ export class TradesService {
       t.direction === 'LONG' ? '多' : '空',
       t.status === 'OPEN' ? '持仓中' : t.status === 'NEEDS_REVIEW' ? '待确认' : '已平仓',
       t.isLiquidation ? `是(${t.liquidationCount})` : '否',
+      EXIT_LABEL[t.exitType ?? ''] ?? '',
       n(t.entryPrice),
       t.exitPrice ? n(t.exitPrice) : null,
       n(t.quantity),
@@ -329,6 +330,14 @@ export class TradesService {
     return rows.map((r) => r.symbol);
   }
 }
+
+const EXIT_LABEL: Record<string, string> = {
+  STOP_LOSS: '止损触发',
+  TAKE_PROFIT: '止盈触发',
+  LIQUIDATION: '强制平仓',
+  REVERSE: '反手',
+  MANUAL: '手动平仓',
+};
 
 function serialize(t: any) {
   return {

@@ -42,6 +42,12 @@ export class SyncController {
     return this.sync.listJobs();
   }
 
+  @Post('enrich-stops')
+  @HttpCode(200)
+  enrichStops() {
+    return this.sync.backfillStops();
+  }
+
   @Post('reset')
   @HttpCode(200)
   reset() {

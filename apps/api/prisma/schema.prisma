@@ -144,6 +144,9 @@ model Trade {
   liquidationCount Int       @default(0)
   /// 首次强平时间
   liquidationAt    DateTime?
+  /// 离场方式：STOP_LOSS | TAKE_PROFIT | LIQUIDATION | REVERSE | MANUAL
+  /// 来自平仓单的 delegateType（pos_loss_market / pos_profit_market / reverse）
+  exitType         String?
 
   /// 首次开仓时的止损价（R 倍数主口径的来源）
   initialStopPrice String?
