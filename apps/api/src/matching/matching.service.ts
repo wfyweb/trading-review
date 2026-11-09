@@ -67,7 +67,24 @@ export class MatchingService {
       where: { accountId, matchingStatus: { not: 'MANUAL_MATCHED' } },
       include: { review: true, tags: true },
     });
-    const preserved = new Map<string, { review: any; tagIds: string[]; score: number | null; scoreSource: string; scoreDetail: string | null }>();
+    const preserved = new Map<string, {
+      review: any;
+      tagIds: string[];
+      score: number | null;
+      scoreSource: string;
+      scoreDetail: string | null;
+      // 人工补录 / 交易所界面抄录的字段，重建后必须原样带回
+      initialStopPrice: string | null;
+      takeProfitPrice: string | null;
+      riskAmount: string | null;
+      rMultiple: string | null;
+      rMultipleSource: string;
+      margin: string | null;
+      marginMode: string | null;
+      actualLeverage: string | null;
+      leverageSource: string | null;
+      equityAtEntry: string | null;
+    }>();
     for (const t of olds) {
       if (t.review || t.tags.length || t.executionScore !== null) {
         preserved.set(`${t.symbol}|${new Date(t.entryTime).toISOString()}`, {
@@ -76,6 +93,16 @@ export class MatchingService {
           score: t.executionScore,
           scoreSource: t.scoreSource,
           scoreDetail: t.scoreDetail,
+          initialStopPrice: t.initialStopPrice,
+          takeProfitPrice: t.takeProfitPrice,
+          riskAmount: t.riskAmount,
+          rMultiple: t.rMultiple,
+          rMultipleSource: t.rMultipleSource,
+          margin: t.margin,
+          marginMode: t.marginMode,
+          actualLeverage: t.actualLeverage,
+          leverageSource: t.leverageSource,
+          equityAtEntry: t.equityAtEntry,
         });
       }
     }
@@ -126,11 +153,17 @@ export class MatchingService {
             fundingFee: '0',
             netPnl: key(netPnl),
             netPnlEstimated: false,
-            // 交易所不提供开仓止损，R 倍数不猜，保持不可计算
-            initialStopPrice: null,
-            riskAmount: null,
-            rMultiple: null,
-            rMultipleSource: 'NONE',
+            // 优先保留人工补录 / 已提取的止损；没有才留空（绝不猜）
+            initialStopPrice: keep?.initialStopPrice ?? null,
+            takeProfitPrice: keep?.takeProfitPrice ?? null,
+            riskAmount: keep?.riskAmount ?? null,
+            rMultiple: keep?.rMultiple ?? null,
+            rMultipleSource: keep?.rMultipleSource ?? 'NONE',
+            margin: keep?.margin ?? null,
+            marginMode: keep?.marginMode ?? null,
+            actualLeverage: keep?.actualLeverage ?? null,
+            leverageSource: keep?.leverageSource ?? null,
+            equityAtEntry: keep?.equityAtEntry ?? null,
             matchingStatus: 'AUTO_MATCHED',
             isLiquidation: s.liqCount > 0,
             liquidationCount: s.liqCount,
