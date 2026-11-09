@@ -28,6 +28,9 @@
   --accent-dim: rgba(168, 154, 134, 0.14);
 
   /* —— 状态 —— */
+  /* 固定盈亏语义：盈利绿、亏损红。刻意不用 --pos/--neg（那两个随涨跌配色切换而反转） */
+  --pnl-profit: #5f7a65;
+  --pnl-loss: #a85a50;
   --warn: #b08d57;
   --warn-soft: #f7f0e3;
   --danger: #a05b52;
@@ -385,6 +388,13 @@ a {
 .neg {
   color: var(--neg);
 }
+/* 交易记录列表专用：盈利绿 / 亏损红，与涨跌配色开关无关 */
+.pnl-profit {
+  color: var(--pnl-profit);
+}
+.pnl-loss {
+  color: var(--pnl-loss);
+}
 .dim {
   color: var(--text-2);
 }
@@ -578,6 +588,20 @@ textarea.input {
 .table-wrap {
   overflow: auto;
   max-height: calc(100vh - 320px);
+}
+
+/* .table td 设了正文色，会盖过 .pos/.neg 等颜色类；这里提高优先级把盈亏色抢回来 */
+.table tbody td.pos {
+  color: var(--pos);
+}
+.table tbody td.neg {
+  color: var(--neg);
+}
+.table tbody td.pnl-profit {
+  color: var(--pnl-profit);
+}
+.table tbody td.pnl-loss {
+  color: var(--pnl-loss);
 }
 
 .tag {

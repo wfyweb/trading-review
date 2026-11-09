@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Filters, type Performance, type Strategy, type Trade } from '../lib/api';
-import { num, signed, pnlClass, dt, duration, ratioToPct, priceDp } from '../lib/format';
+import { num, signed, pnlClass, fixedPnlClass, dt, duration, ratioToPct, priceDp } from '../lib/format';
 import { go } from '../lib/router';
 import { TradeFormModal } from '../components/TradeFormModal';
 import { CsvImportModal } from '../components/CsvImportModal';
@@ -117,7 +117,7 @@ export function TradesPage({ filters }: { filters: Filters }) {
         <div style={{ textAlign: 'right' }}>
           <div className="muted" style={{ fontSize: 10 }}>筛选结果</div>
           <div className="mono" style={{ fontSize: 13 }}>
-            {total} 笔 {summary && <span className={pnlClass(summary.netPnl)}>· {signed(summary.netPnl, 3)} U</span>}
+            {total} 笔 {summary && <span className={fixedPnlClass(summary.netPnl)}>· {signed(summary.netPnl, 3)} U</span>}
           </div>
         </div>
       </div>
@@ -211,7 +211,7 @@ export function TradesPage({ filters }: { filters: Filters }) {
                     <td className="num" style={{ fontSize: 11.5 }}>
                       {num(t.entryPrice, priceDp(t.entryPrice))} → {t.exitPrice ? num(t.exitPrice, priceDp(t.exitPrice)) : '持仓中'}
                     </td>
-                    <td className={`num ${pnlClass(t.netPnl)}`} style={{ fontWeight: 500 }}>
+                    <td className={`num ${fixedPnlClass(t.netPnl)}`} style={{ fontWeight: 500 }}>
                       {signed(t.netPnl, 3)}
                       {t.netPnlEstimated && <span title="估算值" style={{ color: 'var(--warn)', marginLeft: 3 }}>≈</span>}
                     </td>

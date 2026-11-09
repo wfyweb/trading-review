@@ -13,6 +13,18 @@ export function signed(v: string | number | null | undefined, dp = 2): string {
   return n > 0 ? `+${s}` : n < 0 ? `-${s}` : s;
 }
 
+/**
+ * 固定盈亏配色：盈利绿、亏损红。
+ * 与 pnlClass 的区别：pnlClass 跟随「涨跌配色」开关切换（中式红涨绿跌），
+ * 而交易记录的净收益要求语义稳定，不随开关反转。
+ */
+export function fixedPnlClass(v: string | number | null | undefined): string {
+  if (v === null || v === undefined || v === '') return 'dim';
+  const n = Number(v);
+  if (Number.isNaN(n) || n === 0) return 'dim';
+  return n > 0 ? 'pnl-profit' : 'pnl-loss';
+}
+
 export function pnlClass(v: string | number | null | undefined): string {
   if (v === null || v === undefined || v === '') return 'dim';
   const n = Number(v);
