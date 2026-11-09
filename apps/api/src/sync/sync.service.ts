@@ -15,6 +15,7 @@ import {
 import { isFundingBill, isLiquidationFill, isTransferBill } from '../bitget/mapper';
 import type { BitgetApi, FetchRange } from '../bitget/types';
 import { MatchingService } from '../matching/matching.service';
+import { LeverageService } from '../analytics/leverage.service';
 
 type LogLevel = 'info' | 'warn' | 'error';
 
@@ -28,6 +29,7 @@ export class SyncService {
     private accounts: AccountsService,
     private secrets: SecretsService,
     private matching: MatchingService,
+    private leverage: LeverageService,
   ) {}
 
   // ---------- 配置 ----------
@@ -461,6 +463,17 @@ export class SyncService {
       log(
         `配对完成：平仓 ${matchResult.closed} 笔，持仓中 ${matchResult.open} 笔，恢复历史复盘 ${matchResult.preservedReviews} 笔`,
       );
+
+      // 权益杠杆：交易所不给历史杠杆，用「名义 / 开仓时权益」估算，交易所真值优先
+      try {
+        const lev = await this.leverage.estimate({ accountId: acc.id });
+        log(
+          `权益杠杆推算：估算 ${lev.estimated} 笔，保留交易所值 ${lev.keptExchange} 笔` +
+            (lev.skippedNoEquity > 0 ? `，权益非正跳过 ${lev.skippedNoEquity} 笔` : ''),
+        );
+      } catch (e: any) {
+        log(`权益杠杆推算失败：${e.message}`, 'warn');
+      }
 
       await this.prisma.account.update({ where: { id: acc.id }, data: { lastSyncAt: new Date() } });
       await this.finish(job.id, 'SUCCESS', logs, {

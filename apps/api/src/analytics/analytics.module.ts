@@ -3,13 +3,14 @@ import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 import { MfeService } from './mfe.service';
 import { ScoreService } from './score.service';
+import { LeverageService } from './leverage.service';
 import { TradesModule } from '../trades/trades.module';
 import { MarketModule } from '../market/market.module';
 
 @Module({
   imports: [TradesModule, MarketModule],
   controllers: [AnalyticsController],
-  providers: [AnalyticsService, MfeService, ScoreService],
-  exports: [MfeService, ScoreService],
+  providers: [AnalyticsService, MfeService, ScoreService, LeverageService],
+  exports: [MfeService, ScoreService, LeverageService],
 })
 export class AnalyticsModule {}

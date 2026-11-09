@@ -133,6 +133,10 @@ model Trade {
   plannedLeverage String?
   /// 名义仓位 / 保证金
   actualLeverage  String?
+  /// EXCHANGE（交易所返回的真实值）| ESTIMATED（按权益回放推算）
+  leverageSource  String?
+  /// 开仓时账户权益（推算用）：初始资金 + 此前已平仓盈亏 + 净划转
+  equityAtEntry   String?
 
   /// 是否发生过强制平仓（爆仓），由成交的 burst_close 标记聚合而来
   isLiquidation    Boolean   @default(false)

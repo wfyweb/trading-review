@@ -341,12 +341,24 @@ export function TradeDetailPage({ id }: { id: string }) {
               <Row label="出场均价" value={trade.exitPrice ? num(trade.exitPrice, 4) : '持仓中'} />
               <Row label="数量" value={num(trade.quantity, qtyDp(trade.quantity))} />
               <Row label="名义仓位" value={`${num(Number(trade.entryPrice) * Number(trade.quantity), 2)} U`} />
-              <Row label="保证金" value={trade.margin ? `${num(trade.margin, 2)} U` : '—'} />
-              <Row label="实际杠杆" value={trade.actualLeverage ? `${num(trade.actualLeverage, 1)}×` : '—'} />
+              <Row
+                label="保证金"
+                value={trade.margin ? `${trade.leverageSource === 'ESTIMATED' ? '≈' : ''}${num(trade.margin, 2)} U` : '—'}
+              />
+              <Row
+                label={trade.leverageSource === 'ESTIMATED' ? '权益杠杆(≈)' : '实际杠杆'}
+                value={trade.actualLeverage ? `${trade.leverageSource === 'ESTIMATED' ? '≈' : ''}${num(trade.actualLeverage, 1)}×` : '—'}
+              />
+              {trade.equityAtEntry && <Row label="开仓时权益" value={`${num(trade.equityAtEntry, 2)} U`} />}
               <Row label="保证金模式" value={trade.marginMode === 'crossed' ? '全仓' : trade.marginMode === 'isolated' ? '逐仓' : '—'} />
+              {trade.leverageSource === 'ESTIMATED' && (
+                <div className="muted" style={{ fontSize: 10, lineHeight: 1.6, marginTop: 4 }}>
+                  ≈ 为估算：交易所不提供历史杠杆，这里用「名义仓位 ÷ 开仓时权益」衡量仓位相对账户的重量，与交易所显示的杠杆倍数不是同一个数。
+                </div>
+              )}
               {!trade.actualLeverage && (
                 <div className="muted" style={{ fontSize: 10, lineHeight: 1.6, marginTop: 4 }}>
-                  杠杆与保证金未取到：Bitget 统一账户的历史成交/订单/持仓接口都不返回这两个字段，只有当前持仓接口有。
+                  杠杆与保证金未取到：开仓时账户权益 ≤ 0，无法估算；交易所也不提供历史杠杆。
                 </div>
               )}
             </div>

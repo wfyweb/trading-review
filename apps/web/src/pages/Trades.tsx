@@ -182,16 +182,30 @@ export function TradesPage({ filters }: { filters: Filters }) {
                     <td
                       className="num dim"
                       style={{ fontSize: 11.5 }}
-                      title={t.actualLeverage ? '交易所返回的持仓杠杆' : '统一账户的历史持仓接口不返回杠杆；未平仓单会从当前持仓接口补齐'}
+                      title={
+                        t.leverageSource === 'EXCHANGE'
+                          ? '交易所返回的持仓杠杆'
+                          : t.leverageSource === 'ESTIMATED'
+                            ? `权益杠杆估算：名义仓位 ÷ 开仓时账户权益（${num(t.equityAtEntry, 2)} U）`
+                            : '无杠杆数据'
+                      }
                     >
-                      {t.actualLeverage ? `${num(t.actualLeverage, 0)}×` : '—'}
+                      {t.actualLeverage
+                        ? `${t.leverageSource === 'ESTIMATED' ? '≈' : ''}${num(t.actualLeverage, Number(t.actualLeverage) < 10 ? 1 : 0)}×`
+                        : '—'}
                     </td>
                     <td
                       className="num dim"
                       style={{ fontSize: 11.5 }}
-                      title={t.margin ? '交易所返回的占用保证金（USDT）' : '统一账户的历史持仓接口不返回保证金'}
+                      title={
+                        t.leverageSource === 'ESTIMATED'
+                          ? '估算：全仓模式下权益即担保金，等于开仓时账户权益'
+                          : t.margin
+                            ? '交易所返回的占用保证金（USDT）'
+                            : '无保证金数据'
+                      }
                     >
-                      {t.margin ? `${num(t.margin, 2)}` : '—'}
+                      {t.margin ? `${t.leverageSource === 'ESTIMATED' ? '≈' : ''}${num(t.margin, 2)}` : '—'}
                     </td>
                     <td className="dim" style={{ fontSize: 11.5 }}>{t.strategy?.name ?? '—'}</td>
                     <td className="num" style={{ fontSize: 11.5 }}>

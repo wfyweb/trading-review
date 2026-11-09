@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestj
 import { AnalyticsService } from './analytics.service';
 import { MfeService } from './mfe.service';
 import { ScoreService } from './score.service';
+import { LeverageService } from './leverage.service';
 import { TradeQueryDto } from '../trades/trades.dto';
 
 @Controller('analytics')
@@ -10,6 +11,7 @@ export class AnalyticsController {
     private readonly analytics: AnalyticsService,
     private readonly mfe: MfeService,
     private readonly score: ScoreService,
+    private readonly leverage: LeverageService,
   ) {}
 
   @Get('overview')
@@ -68,6 +70,19 @@ export class AnalyticsController {
   @HttpCode(200)
   mfeOne(@Param('tradeId') tradeId: string, @Body() body: any) {
     return this.mfe.computeOne(tradeId, { allowFetch: body?.allowFetch !== false });
+  }
+
+  // ——— 权益杠杆（估算） ———
+
+  @Get('leverage/explain')
+  leverageExplain() {
+    return this.leverage.explain();
+  }
+
+  @Post('leverage/estimate')
+  @HttpCode(200)
+  leverageEstimate(@Body() body: any) {
+    return this.leverage.estimate({ accountId: body?.accountId, force: Boolean(body?.force) });
   }
 
   // ——— 执行评分自动化 ———

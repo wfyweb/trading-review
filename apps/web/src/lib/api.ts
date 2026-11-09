@@ -44,6 +44,10 @@ export interface Trade {
   margin: string | null;
   marginMode: string | null;
   actualLeverage: string | null;
+  /** EXCHANGE = 交易所真实值；ESTIMATED = 按权益回放估算 */
+  leverageSource: 'EXCHANGE' | 'ESTIMATED' | null;
+  /** 开仓时账户权益（估算依据） */
+  equityAtEntry: string | null;
   plannedLeverage: string | null;
   initialStopPrice: string | null;
   riskAmount: string | null;
