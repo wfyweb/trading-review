@@ -84,6 +84,12 @@ export class MatchingService {
       actualLeverage: string | null;
       leverageSource: string | null;
       equityAtEntry: string | null;
+      // MFE/MAE 计算结果：K 线分析贵（要拉行情），重建必须原样保留
+      mfe: string | null;
+      mae: string | null;
+      mfePct: string | null;
+      maePct: string | null;
+      candleStatus: string;
     }>();
     for (const t of olds) {
       if (t.review || t.tags.length || t.executionScore !== null) {
@@ -103,6 +109,11 @@ export class MatchingService {
           actualLeverage: t.actualLeverage,
           leverageSource: t.leverageSource,
           equityAtEntry: t.equityAtEntry,
+          mfe: t.mfe,
+          mae: t.mae,
+          mfePct: t.mfePct,
+          maePct: t.maePct,
+          candleStatus: t.candleStatus,
         });
       }
     }
@@ -164,6 +175,11 @@ export class MatchingService {
             actualLeverage: keep?.actualLeverage ?? null,
             leverageSource: keep?.leverageSource ?? null,
             equityAtEntry: keep?.equityAtEntry ?? null,
+            mfe: keep?.mfe ?? null,
+            mae: keep?.mae ?? null,
+            mfePct: keep?.mfePct ?? null,
+            maePct: keep?.maePct ?? null,
+            candleStatus: keep?.candleStatus ?? 'PENDING',
             matchingStatus: 'AUTO_MATCHED',
             isLiquidation: s.liqCount > 0,
             liquidationCount: s.liqCount,
