@@ -158,7 +158,7 @@ pnpm dev
 打开「终端」（Mac 上按 `Command + 空格`，输入 `终端` 回车），进入项目目录后执行：
 
 ```bash
-cd "/Users/wfy/learn/ai/复盘/trading-review"
+cd <项目根目录>   # 例如本机上的 trading-review 目录
 pnpm dev
 ```
 
